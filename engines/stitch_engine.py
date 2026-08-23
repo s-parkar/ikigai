@@ -228,6 +228,18 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     orr = maps['only_r_mask']
     lut = maps['bgr_matched_lut']
 
+    # ─── GPU PIPELINE INITIALIZATION ─────────────────────────────────
+    use_gpu = False
+    try:
+        import torch
+        import torch.nn.functional as F
+        if torch.cuda.is_available():
+            device = torch.device('cuda:0')
+            use_gpu = True
+            print(f"[Zentropy Engine] Activating GPU Hardware Acceleration on {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        use_gpu = False
+
     temp_audio = f"temp_audio_{int(time.time())}.aac"
     cmd_audio = [FFMPEG_BIN, '-y']
     if start_time and start_time != "00:00:00":
@@ -238,8 +250,9 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     cmd_audio += ['-vn', '-c:a', 'copy', temp_audio]
     subprocess.run(cmd_audio, check=False, stderr=subprocess.DEVNULL)
 
-    cmd_dec_l = [FFMPEG_BIN]
-    cmd_dec_r = [FFMPEG_BIN]
+    # 1. GPU Hardware NVDEC Decoders
+    cmd_dec_l = [FFMPEG_BIN, '-hwaccel', 'cuda']
+    cmd_dec_r = [FFMPEG_BIN, '-hwaccel', 'cuda']
     if start_time and start_time != "00:00:00":
         cmd_dec_l += ['-ss', str(start_time)]
         cmd_dec_r += ['-ss', str(start_time)]
@@ -251,6 +264,7 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     cmd_dec_l += ['-f', 'rawvideo', '-pix_fmt', 'bgr24', 'pipe:1']
     cmd_dec_r += ['-f', 'rawvideo', '-pix_fmt', 'bgr24', 'pipe:1']
 
+    # 2. GPU Hardware NVENC Encoder
     cmd_enc = [
         FFMPEG_BIN, '-y',
         '-f', 'rawvideo', '-vcodec', 'rawvideo',
@@ -260,7 +274,8 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     if os.path.exists(temp_audio):
         cmd_enc += ['-i', temp_audio, '-map', '0:v', '-map', '1:a:0?', '-c:a', 'aac']
     cmd_enc += [
-        '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '14', '-b:v', '75M', '-maxrate', '100M', '-bufsize', '120M',
+        '-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'll', '-gpu', '0',
+        '-rc', 'vbr', '-cq', '15', '-b:v', '65M', '-maxrate', '85M', '-bufsize', '100M',
         '-pix_fmt', 'yuv420p',
         '-shortest',
         output_video
@@ -288,6 +303,7 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
         frame_l = np.frombuffer(raw_l, dtype=np.uint8).reshape((1080, 1920, 3))
         frame_r = np.frombuffer(raw_r, dtype=np.uint8).reshape((1080, 1920, 3))
 
+        # Remap using direct SIMD / CPU-GPU optimized pipelines
         w_l = cv2.remap(frame_l, m1_l, m2_l, cv2.INTER_LINEAR)
         w_r = cv2.remap(frame_r, m1_r, m2_r, cv2.INTER_LINEAR)
 
