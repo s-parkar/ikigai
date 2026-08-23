@@ -278,6 +278,9 @@ class ZentropyControlCenter(ctk.CTk):
 
     def load_static_pano_preview(self):
         ref_path = "check_natural_3200x1080.jpg"
+        if not os.path.exists(ref_path):
+            ref_path = os.path.join("debug_artifacts", "frames", "check_natural_3200x1080.jpg")
+        
         if os.path.exists(ref_path):
             img = Image.open(ref_path)
             w, h = img.size
@@ -558,6 +561,8 @@ class ZentropyControlCenter(ctk.CTk):
         pano_file = self.entry_live_pano.get().strip()
         if not os.path.exists(pano_file):
             pano_file = "check_natural_3200x1080.jpg"
+        if not os.path.exists(pano_file):
+            pano_file = os.path.join("debug_artifacts", "frames", "check_natural_3200x1080.jpg")
         
         if os.path.exists(pano_file):
             if pano_file.endswith(('.mp4', '.mov', '.mkv')):
