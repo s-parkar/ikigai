@@ -1,6 +1,6 @@
 """Stitching Engine for Zentropy Panoramic Video Generation.
 
-Provides both CLI and Python API with real-time callbacks.
+Provides high-throughput GPU Hardware NVDEC + PyTorch CUDA Tensor + NVENC Stitching Engine.
 """
 
 import os
@@ -9,8 +9,12 @@ import time
 import json
 import argparse
 import subprocess
+import threading
+import queue
 import cv2
 import numpy as np
+import torch
+import torch.nn.functional as F
 
 FFMPEG_BIN = r'C:\Users\yashs\ffmpeg-7.1-full_build-shared\bin\ffmpeg.exe'
 
@@ -171,7 +175,8 @@ def compute_calibration_maps(img_l_source, img_r_source, f=1450.0, target_w=3200
 
     w_l_ref = cv2.remap(img_l, map1_l, map2_l, cv2.INTER_LANCZOS4)
     w_r_ref = cv2.remap(img_r, map1_r, map2_r, cv2.INTER_LANCZOS4)
-    ov_bool = (mask_l > 0) & (mask_r > 0)
+
+    ov_bool = overlap_mask_3d.squeeze()
 
     lab_l = cv2.cvtColor(w_l_ref, cv2.COLOR_BGR2LAB).astype(np.float32)
     lab_r = cv2.cvtColor(w_r_ref, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -193,6 +198,8 @@ def compute_calibration_maps(img_l_source, img_r_source, f=1450.0, target_w=3200
     return {
         'map1_l': map1_l, 'map2_l': map2_l,
         'map1_r': map1_r, 'map2_r': map2_r,
+        'direct_l_x': direct_l_x, 'direct_l_y': direct_l_y,
+        'direct_r_x': direct_r_x, 'direct_r_y': direct_r_y,
         'weight_l': weight_l, 'weight_r': weight_r,
         'overlap_mask_3d': overlap_mask_3d,
         'only_l_mask': only_l_mask, 'only_r_mask': only_r_mask,
@@ -219,6 +226,34 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
 
     target_w = maps['target_w']
     target_h = maps['target_h']
+    in_w, in_h = 1920, 1080
+
+    # ─── GPU PIPELINE INITIALIZATION ─────────────────────────────────
+    use_gpu = False
+    device = None
+    if torch.cuda.is_available():
+        device = torch.device('cuda:0')
+        use_gpu = True
+        print(f"[Zentropy Engine] Activating Ultra-Fast GPU Acceleration on {torch.cuda.get_device_name(0)}")
+
+        # Convert maps to normalized PyTorch sampling grid in [-1, 1]
+        lx = maps['direct_l_x']
+        ly = maps['direct_l_y']
+        rx = maps['direct_r_x']
+        ry = maps['direct_r_y']
+
+        gl_x = (lx / (in_w - 1.0)) * 2.0 - 1.0
+        gl_y = (ly / (in_h - 1.0)) * 2.0 - 1.0
+        gr_x = (rx / (in_w - 1.0)) * 2.0 - 1.0
+        gr_y = (ry / (in_h - 1.0)) * 2.0 - 1.0
+
+        grid_l_gpu = torch.from_numpy(np.stack([gl_x, gl_y], axis=-1)).unsqueeze(0).to(device=device, dtype=torch.float32)
+        grid_r_gpu = torch.from_numpy(np.stack([gr_x, gr_y], axis=-1)).unsqueeze(0).to(device=device, dtype=torch.float32)
+
+        wl_gpu = torch.from_numpy(maps['weight_l']).permute(2, 0, 1).unsqueeze(0).to(device=device, dtype=torch.float32)
+        wr_gpu = torch.from_numpy(maps['weight_r']).permute(2, 0, 1).unsqueeze(0).to(device=device, dtype=torch.float32)
+
+    # CPU Fallback Structures
     m1_l, m2_l = maps['map1_l'], maps['map2_l']
     m1_r, m2_r = maps['map1_r'], maps['map2_r']
     w_l_fix = (maps['weight_l'] * 256.0).astype(np.int16)
@@ -227,18 +262,6 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     ol = maps['only_l_mask']
     orr = maps['only_r_mask']
     lut = maps['bgr_matched_lut']
-
-    # ─── GPU PIPELINE INITIALIZATION ─────────────────────────────────
-    use_gpu = False
-    try:
-        import torch
-        import torch.nn.functional as F
-        if torch.cuda.is_available():
-            device = torch.device('cuda:0')
-            use_gpu = True
-            print(f"[Zentropy Engine] Activating GPU Hardware Acceleration on {torch.cuda.get_device_name(0)}")
-    except Exception as e:
-        use_gpu = False
 
     temp_audio = f"temp_audio_{int(time.time())}.aac"
     cmd_audio = [FFMPEG_BIN, '-y']
@@ -288,70 +311,118 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     frame_bytes = 1920 * 1080 * 3
     count = 0
     t0 = time.time()
-
     total_est = int(float(duration) * fps_in) if duration else total_frames_in
 
-    while True:
-        if cancel_flag and cancel_flag():
-            print("Stitching cancelled by user.")
-            break
-        raw_l = proc_l.stdout.read(frame_bytes)
-        raw_r = proc_r.stdout.read(frame_bytes)
-        if len(raw_l) < frame_bytes or len(raw_r) < frame_bytes:
-            break
+    # ─── ASYNCHRONOUS PRODUCER QUEUES ─────────────────────────────────
+    q_in = queue.Queue(maxsize=16)
+    stop_event = threading.Event()
 
-        frame_l = np.frombuffer(raw_l, dtype=np.uint8).reshape((1080, 1920, 3))
-        frame_r = np.frombuffer(raw_r, dtype=np.uint8).reshape((1080, 1920, 3))
+    def reader_thread():
+        while not stop_event.is_set():
+            rl = proc_l.stdout.read(frame_bytes)
+            rr = proc_r.stdout.read(frame_bytes)
+            if len(rl) < frame_bytes or len(rr) < frame_bytes:
+                break
+            q_in.put((rl, rr))
+        q_in.put(None)
 
-        # Remap using direct SIMD / CPU-GPU optimized pipelines
-        w_l = cv2.remap(frame_l, m1_l, m2_l, cv2.INTER_LINEAR)
-        w_r = cv2.remap(frame_r, m1_r, m2_r, cv2.INTER_LINEAR)
+    t_read = threading.Thread(target=reader_thread, daemon=True)
+    t_read.start()
 
-        b = w_r[:, :, 0] >> 3
-        g = w_r[:, :, 1] >> 3
-        r = w_r[:, :, 2] >> 3
-        w_r_matched = lut[b, g, r]
+    BATCH_SIZE = 4 if use_gpu else 1
 
-        pano = np.where(ov, 
-                        ((w_l.astype(np.int16) * w_l_fix + w_r_matched.astype(np.int16) * w_r_fix) >> 8).astype(np.uint8),
-               np.where(ol, w_l, 
-               np.where(orr, w_r_matched, 0))).astype(np.uint8)
+    try:
+        while True:
+            if cancel_flag and cancel_flag():
+                print("Stitching cancelled by user.")
+                stop_event.set()
+                break
 
-        proc_enc.stdin.write(pano.tobytes())
-        count += 1
+            batch_raw = []
+            for _ in range(BATCH_SIZE):
+                item = q_in.get()
+                if item is None:
+                    break
+                batch_raw.append(item)
 
-        if count % 30 == 0:
-            elapsed = time.time() - t0
-            cur_fps = count / elapsed if elapsed > 0 else 0
-            eta = (total_est - count) / cur_fps if cur_fps > 0 and total_est > count else 0
-            if progress_callback:
-                progress_callback(count, total_est, cur_fps, elapsed, eta)
+            if not batch_raw:
+                break
 
-    proc_l.stdout.close()
-    proc_r.stdout.close()
-    proc_enc.stdin.close()
-    proc_l.wait()
-    proc_r.wait()
-    proc_enc.wait()
+            cur_b = len(batch_raw)
+
+            if use_gpu:
+                # ─── HIGH-THROUGHPUT PYTORCH GPU CUDA PROCESSING ─────
+                bl_np = np.stack([np.frombuffer(item[0], dtype=np.uint8).reshape(1080, 1920, 3) for item in batch_raw]).transpose(0, 3, 1, 2)
+                br_np = np.stack([np.frombuffer(item[1], dtype=np.uint8).reshape(1080, 1920, 3) for item in batch_raw]).transpose(0, 3, 1, 2)
+
+                tl = torch.from_numpy(bl_np).to(device=device, dtype=torch.float32, non_blocking=True)
+                tr = torch.from_numpy(br_np).to(device=device, dtype=torch.float32, non_blocking=True)
+
+                gl_b = grid_l_gpu.expand(cur_b, -1, -1, -1)
+                gr_b = grid_r_gpu.expand(cur_b, -1, -1, -1)
+                wl_b = wl_gpu.expand(cur_b, -1, -1, -1)
+                wr_b = wr_gpu.expand(cur_b, -1, -1, -1)
+
+                wl_out = F.grid_sample(tl, gl_b, mode='bilinear', align_corners=False)
+                wr_out = F.grid_sample(tr, gr_b, mode='bilinear', align_corners=False)
+
+                pano_gpu = (wl_out * wl_b + wr_out * wr_b).to(torch.uint8)
+                pano_np = pano_gpu.permute(0, 2, 3, 1).cpu().numpy()
+
+                for frame_idx in range(cur_b):
+                    proc_enc.stdin.write(pano_np[frame_idx].tobytes())
+            else:
+                # CPU SIMD
+                for item in batch_raw:
+                    frame_l = np.frombuffer(item[0], dtype=np.uint8).reshape((1080, 1920, 3))
+                    frame_r = np.frombuffer(item[1], dtype=np.uint8).reshape((1080, 1920, 3))
+
+                    w_l = cv2.remap(frame_l, m1_l, m2_l, cv2.INTER_LINEAR)
+                    w_r = cv2.remap(frame_r, m1_r, m2_r, cv2.INTER_LINEAR)
+
+                    b = w_r[:, :, 0] >> 3
+                    g = w_r[:, :, 1] >> 3
+                    r = w_r[:, :, 2] >> 3
+                    w_r_matched = lut[b, g, r]
+
+                    pano = np.where(ov, 
+                                    ((w_l.astype(np.int16) * w_l_fix + w_r_matched.astype(np.int16) * w_r_fix) >> 8).astype(np.uint8),
+                           np.where(ol, w_l, 
+                           np.where(orr, w_r_matched, 0))).astype(np.uint8)
+
+                    proc_enc.stdin.write(pano.tobytes())
+
+            count += cur_b
+
+            if count % 15 == 0 or count >= total_est:
+                elapsed = time.time() - t0
+                cur_fps = count / elapsed if elapsed > 0 else 0
+                eta = (total_est - count) / cur_fps if cur_fps > 0 and total_est > count else 0
+                if progress_callback:
+                    progress_callback(count, total_est, cur_fps, elapsed, eta)
+
+    finally:
+        stop_event.set()
+        proc_l.stdout.close()
+        proc_r.stdout.close()
+        proc_enc.stdin.close()
+        proc_l.wait()
+        proc_r.wait()
+        proc_enc.wait()
 
     if os.path.exists(temp_audio):
-        try: os.remove(temp_audio)
-        except: pass
-
-    return output_video
+        try:
+            os.remove(temp_audio)
+        except Exception:
+            pass
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Panoramic Stitching CLI Engine')
-    parser.add_argument('--lhs', default='LHS.MOV', help='Left camera video file')
-    parser.add_argument('--rhs', default='RHS.MOV', help='Right camera video file')
-    parser.add_argument('--output', default='stitched_panorama_full.mp4', help='Output panorama file')
-    parser.add_argument('--start', default='00:00:00', help='Start time (HH:MM:SS)')
-    parser.add_argument('--duration', default=None, type=float, help='Duration in seconds')
+    parser = argparse.ArgumentParser(description="Zentropy Panoramic Stitching Engine")
+    parser.add_argument("--lhs", default="LHS.MOV", help="Left camera video")
+    parser.add_argument("--rhs", default="RHS.MOV", help="Right camera video")
+    parser.add_argument("--output", default="stitched_panorama_full.mp4", help="Output panorama path")
+    parser.add_argument("--start", default="00:00:00", help="Start time (HH:MM:SS)")
+    parser.add_argument("--duration", type=float, default=None, help="Duration in seconds")
     args = parser.parse_args()
 
-    def print_progress(c, tot, fps, elapsed, eta):
-        pct = (c / tot * 100) if tot > 0 else 0
-        print(f"[{pct:5.1f}%] {c}/{tot} frames | {fps:4.1f} FPS | Elapsed: {elapsed:5.1f}s | ETA: {eta:5.1f}s")
-        sys.stdout.flush()
-
-    run_stitching(args.lhs, args.rhs, args.output, start_time=args.start, duration=args.duration, progress_callback=print_progress)
+    run_stitching(args.lhs, args.rhs, args.output, start_time=args.start, duration=args.duration)
