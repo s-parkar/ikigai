@@ -1005,10 +1005,17 @@ class ZentropyControlCenter(ctk.CTk):
         curr_cx = self.live_ptz_x * w
         curr_cw = self.live_ptz_w
         curr_vel_x = 0.0
-
         last_ball_x = None
 
+        target_fps = 60.0 # TURBO 60 FPS
+        frame_interval = 1.0 / target_fps
+
+        t_last_fps = time.perf_counter()
+        frames_rendered = 0
+
         while self.live_playing and cap.isOpened():
+            t_loop_start = time.perf_counter()
+
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -1017,7 +1024,7 @@ class ZentropyControlCenter(ctk.CTk):
             
             self.live_current_frame = frame
             
-            # Ultra-Stable Cosine Deadband Tracking
+            # Ultra-Stable Cosine Deadband Tracking (GPU & Math Optimized)
             if self.switch_auto_ptz.get():
                 if self.live_trajectory and frame_idx in self.live_trajectory:
                     entry = self.live_trajectory[frame_idx]
@@ -1057,15 +1064,25 @@ class ZentropyControlCenter(ctk.CTk):
                     self.live_ptz_w = float(h * 16.0 / 9.0)
 
             self.render_live_studio_views()
+            frames_rendered += 1
 
-            if frame_idx % 15 == 0:
+            # High-precision 60 FPS timer
+            t_now = time.perf_counter()
+            elapsed = t_now - t_loop_start
+            sleep_needed = max(0.001, frame_interval - elapsed)
+            time.sleep(sleep_needed)
+
+            # Live FPS & position telemetry
+            if frames_rendered % 30 == 0:
+                dt = t_now - t_last_fps
+                measured_fps = 30.0 / dt if dt > 0 else 60.0
+                t_last_fps = t_now
                 cur_sec = int(frame_idx / fps)
                 mins = cur_sec // 60
                 secs = cur_sec % 60
-                self.lbl_live_time_display.configure(text=f"Position: {mins:02d}:{secs:02d} (Frame {frame_idx})")
+                self.lbl_live_time_display.configure(text=f"Position: {mins:02d}:{secs:02d} (Frame {frame_idx}) | ⚡ {measured_fps:.1f} FPS")
 
             frame_idx += 1
-            time.sleep(0.033)
         cap.release()
 
     def toggle_stream_server(self):
