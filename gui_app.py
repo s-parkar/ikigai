@@ -755,7 +755,8 @@ class ZentropyControlCenter(ctk.CTk):
         frame = self.live_current_frame
         h, w = frame.shape[:2]
 
-        cw = self.ptz_canvas.winfo_width() or 1000
+        raw_cw = self.ptz_canvas.winfo_width()
+        cw = raw_cw if raw_cw > 50 else 1000
         ch = 175
         resized_pano = cv2.resize(frame, (cw, ch))
         rgb_pano = cv2.cvtColor(resized_pano, cv2.COLOR_BGR2RGB)
@@ -809,14 +810,17 @@ class ZentropyControlCenter(ctk.CTk):
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
         # Scale to fit monitor stage
-        mon_w = self.lbl_live_16_9.winfo_width() or 680
-        mon_h = int(mon_w * 9.0 / 16.0)
-        resized_broad = cv2.resize(broadcast_crop, (mon_w, mon_h))
-        rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
-        pil_broad = Image.fromarray(rgb_broad)
-        ctk_broad = ctk.CTkImage(light_image=pil_broad, dark_image=pil_broad, size=(mon_w, mon_h))
-        self.lbl_live_16_9.configure(image=ctk_broad, text="")
-        self.lbl_live_16_9.image = ctk_broad
+        raw_mon_w = self.lbl_live_16_9.winfo_width()
+        mon_w = raw_mon_w if raw_mon_w > 50 else 680
+        mon_h = max(240, int(mon_w * 9.0 / 16.0))
+        
+        if broadcast_crop is not None and broadcast_crop.size > 0:
+            resized_broad = cv2.resize(broadcast_crop, (mon_w, mon_h))
+            rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
+            pil_broad = Image.fromarray(rgb_broad)
+            ctk_broad = ctk.CTkImage(light_image=pil_broad, dark_image=pil_broad, size=(mon_w, mon_h))
+            self.lbl_live_16_9.configure(image=ctk_broad, text="")
+            self.lbl_live_16_9.image = ctk_broad
 
         # Live telemetry display update
         yaw_deg = (self.live_ptz_x - 0.5) * 90.0
