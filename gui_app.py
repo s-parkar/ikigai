@@ -1193,6 +1193,8 @@ class ZentropyControlCenter(ctk.CTk):
                     self.lbl_stitch_stats.configure(text=f"Frame: {c}/{tot} ({pct*100:.1f}%) | Speed: {fps:.1f} FPS | Elapsed: {el:.1f}s | ETA: {eta:.1f}s")
 
                 run_stitching(lhs, rhs, out, start_time=st, duration=dur_val, progress_callback=cb, cancel_flag=lambda: self.cancel_requested)
+                self.stitch_prog_bar.set(1.0)
+                self.lbl_stitch_stats.configure(text=f"Panoramic Video Saved: {out}")
                 self.log_message(f"Panoramic Stitching Complete! Saved to {out}")
                 self.set_status("COMPLETED", "#10b981")
                 self.entry_pano_in.delete(0, "end")
