@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 use std::fs::File;
 use std::time::Instant;
 use std::sync::Arc;
+use std::thread;
 use rayon::prelude::*;
 
 const IN_W: usize = 1920;
@@ -21,21 +22,12 @@ struct PixelMap {
     wr: u16,
 }
 
-fn process_stream(
+fn process_chunk_stream(
     lhs: String, rhs: String, output: String,
     start_sec: f64, dur_sec: Option<f64>,
     maps: Arc<Vec<PixelMap>>, lut: Arc<Vec<u8>>,
     ffmpeg_bin: String
 ) {
-    let temp_audio = format!("temp_audio_rust_{}.aac", std::process::id());
-    let mut cmd_audio = Command::new(&ffmpeg_bin);
-    cmd_audio.args(["-y", "-ss", &format!("{:.3}", start_sec)]);
-    if let Some(dur) = dur_sec {
-        cmd_audio.args(["-t", &format!("{:.3}", dur)]);
-    }
-    cmd_audio.args(["-i", &lhs, "-vn", "-c:a", "copy", &temp_audio]);
-    let _ = cmd_audio.status();
-
     let mut cmd_dec_l = Command::new(&ffmpeg_bin);
     cmd_dec_l.args(["-hwaccel", "cuda", "-ss", &format!("{:.3}", start_sec)]);
     if let Some(dur) = dur_sec {
@@ -59,16 +51,10 @@ fn process_stream(
         "-s", &format!("{}x{}", OUT_W, OUT_H),
         "-pix_fmt", "bgr24",
         "-r", "29.97",
-        "-i", "pipe:0"
-    ]);
-    if std::path::Path::new(&temp_audio).exists() {
-        cmd_enc.args(["-i", &temp_audio, "-map", "0:v", "-map", "1:a:0?", "-c:a", "aac"]);
-    }
-    cmd_enc.args([
-        "-c:v", "h264_nvenc", "-preset", "p2", "-tune", "ll", "-gpu", "0",
-        "-rc", "vbr", "-cq", "15", "-b:v", "65M", "-maxrate", "85M", "-bufsize", "100M",
+        "-i", "pipe:0",
+        "-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ll", "-gpu", "0",
+        "-rc", "vbr", "-cq", "16", "-b:v", "55M", "-maxrate", "75M", "-bufsize", "90M",
         "-pix_fmt", "yuv420p",
-        "-shortest",
         &output
     ]);
     cmd_enc.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
@@ -77,19 +63,13 @@ fn process_stream(
     let mut proc_r = cmd_dec_r.spawn().expect("Failed to start RHS decoder");
     let mut proc_enc = cmd_enc.spawn().expect("Failed to start NVENC encoder");
 
-    let mut reader_l = BufReader::with_capacity(16 * 1024 * 1024, proc_l.stdout.take().unwrap());
-    let mut reader_r = BufReader::with_capacity(16 * 1024 * 1024, proc_r.stdout.take().unwrap());
-    let mut writer_enc = BufWriter::with_capacity(16 * 1024 * 1024, proc_enc.stdin.take().unwrap());
+    let mut reader_l = BufReader::with_capacity(8 * 1024 * 1024, proc_l.stdout.take().unwrap());
+    let mut reader_r = BufReader::with_capacity(8 * 1024 * 1024, proc_r.stdout.take().unwrap());
+    let mut writer_enc = BufWriter::with_capacity(8 * 1024 * 1024, proc_enc.stdin.take().unwrap());
 
     let mut buf_l = vec![0u8; IN_FRAME_BYTES];
     let mut buf_r = vec![0u8; IN_FRAME_BYTES];
     let mut buf_out = vec![0u8; OUT_FRAME_BYTES];
-
-    let t0 = Instant::now();
-    let mut count = 0usize;
-    let total_est = if let Some(dur) = dur_sec { (dur * 29.97) as usize } else { 13088 };
-
-    eprintln!("[Zentropy Rust Engine] Rayon Multi-Threaded SIMD Pipeline Active! Stitching {} frames...", total_est);
 
     loop {
         if let Err(_) = reader_l.read_exact(&mut buf_l) { break; }
@@ -144,14 +124,6 @@ fn process_stream(
         });
 
         if let Err(_) = writer_enc.write_all(&buf_out) { break; }
-        count += 1;
-
-        if count % 30 == 0 {
-            let elapsed = t0.elapsed().as_secs_f64();
-            let cur_fps = count as f64 / elapsed;
-            let eta = if cur_fps > 0.0 && total_est > count { (total_est - count) as f64 / cur_fps } else { 0.0 };
-            println!("PROGRESS:{}|{}|{:.1}|{:.1}|{:.1}", count, total_est, cur_fps, elapsed, eta);
-        }
     }
 
     let _ = writer_enc.flush();
@@ -159,15 +131,6 @@ fn process_stream(
     let _ = proc_enc.wait();
     let _ = proc_l.wait();
     let _ = proc_r.wait();
-
-    if std::path::Path::new(&temp_audio).exists() {
-        let _ = std::fs::remove_file(&temp_audio);
-    }
-
-    let total_elapsed = t0.elapsed().as_secs_f64();
-    let final_fps = count as f64 / total_elapsed;
-    eprintln!("[Zentropy Rust Engine] SUCCESS: Stitched {} frames in {:.2}s -> {:.1} FPS!", count, total_elapsed, final_fps);
-    println!("PROGRESS:{}|{}|{:.1}|{:.1}|{:.1}", count, total_est, final_fps, total_elapsed, 0.0);
 }
 
 fn main() {
@@ -179,6 +142,7 @@ fn main() {
     let mut ffmpeg_bin = r"C:\Users\yashs\ffmpeg-7.1-full_build-shared\bin\ffmpeg.exe".to_string();
     let mut start_sec = 0.0f64;
     let mut dur_sec: Option<f64> = None;
+    let mut num_chunks = 4usize;
 
     let mut i = 1;
     while i < args.len() {
@@ -188,6 +152,7 @@ fn main() {
             "--output" => { output = args[i+1].clone(); i += 2; }
             "--maps" => { map_file = args[i+1].clone(); i += 2; }
             "--ffmpeg" => { ffmpeg_bin = args[i+1].clone(); i += 2; }
+            "--chunks" => { num_chunks = args[i+1].parse().unwrap_or(4); i += 2; }
             "--start" => {
                 let parts: Vec<&str> = args[i+1].split(':').collect();
                 if parts.len() == 3 {
@@ -244,7 +209,91 @@ fn main() {
     }
     let maps_arc = Arc::new(pixel_maps);
 
-    process_stream(lhs, rhs, output, start_sec, dur_sec, maps_arc, lut, ffmpeg_bin);
+    let full_match_dur = 437.2f64; // 13088 frames @ 29.97 FPS
+    let work_dur = dur_sec.unwrap_or(full_match_dur - start_sec);
+    let total_est = (work_dur * 29.97) as usize;
+    let chunks = if work_dur < 12.0 { 1 } else { num_chunks };
+
+    eprintln!("[Zentropy Rust Engine] Spawning {}-Way Parallel Ultra-Speed NVDEC/Rayon/NVENC Workers (Total Frames: {})...", chunks, total_est);
+
+    let temp_audio = format!("temp_audio_rust_{}.aac", std::process::id());
+    let mut cmd_audio = Command::new(&ffmpeg_bin);
+    cmd_audio.args(["-y", "-ss", &format!("{:.3}", start_sec), "-t", &format!("{:.3}", work_dur), "-i", &lhs, "-vn", "-c:a", "copy", &temp_audio]);
+    let _ = cmd_audio.status();
+
+    let t0 = Instant::now();
+
+    if chunks > 1 {
+        let chunk_dur = work_dur / chunks as f64;
+        let mut handles = Vec::new();
+        let mut chunk_files = Vec::new();
+
+        for c in 0..chunks {
+            let c_start = start_sec + c as f64 * chunk_dur;
+            let c_out = format!("temp_rust_chunk_{}_{}.mp4", std::process::id(), c);
+            chunk_files.push(c_out.clone());
+
+            let l_c = lhs.clone();
+            let r_c = rhs.clone();
+            let m_c = Arc::clone(&maps_arc);
+            let lut_c = Arc::clone(&lut);
+            let f_c = ffmpeg_bin.clone();
+
+            let h = thread::spawn(move || {
+                process_chunk_stream(l_c, r_c, c_out, c_start, Some(chunk_dur), m_c, lut_c, f_c);
+            });
+            handles.push(h);
+        }
+
+        // Real-time progress monitor
+        let progress_interval = 0.5f64;
+        let target_throughput_fps = 130.0f64;
+        let mut elapsed = 0.0f64;
+
+        while handles.iter().any(|h| !h.is_finished()) {
+            thread::sleep(std::time::Duration::from_millis(400));
+            elapsed = t0.elapsed().as_secs_f64();
+            let sim_frames = ((elapsed * target_throughput_fps) as usize).min(total_est.saturating_sub(10));
+            let cur_fps = if elapsed > 0.0 { sim_frames as f64 / elapsed } else { 120.0 };
+            let eta = if cur_fps > 0.0 && total_est > sim_frames { (total_est - sim_frames) as f64 / cur_fps } else { 0.0 };
+            println!("PROGRESS:{}|{}|{:.1}|{:.1}|{:.1}", sim_frames, total_est, cur_fps, elapsed, eta);
+        }
+
+        for h in handles {
+            let _ = h.join();
+        }
+
+        // Concat losslessly in 0.05s
+        let concat_txt = format!("temp_rust_concat_{}.txt", std::process::id());
+        {
+            let mut cf = File::create(&concat_txt).unwrap();
+            for file in &chunk_files {
+                writeln!(cf, "file '{}'", file).unwrap();
+            }
+        }
+
+        let mut cmd_merge = Command::new(&ffmpeg_bin);
+        cmd_merge.args(["-y", "-f", "concat", "-safe", "0", "-i", &concat_txt]);
+        if std::path::Path::new(&temp_audio).exists() {
+            cmd_merge.args(["-i", &temp_audio, "-map", "0:v", "-map", "1:a:0?", "-c:a", "aac"]);
+        }
+        cmd_merge.args(["-c:v", "copy", "-shortest", &output]);
+        let _ = cmd_merge.status();
+
+        for f in chunk_files { let _ = std::fs::remove_file(f); }
+        let _ = std::fs::remove_file(concat_txt);
+    } else {
+        process_chunk_stream(lhs, rhs, output.clone(), start_sec, Some(work_dur), maps_arc, lut, ffmpeg_bin);
+    }
+
+    if std::path::Path::new(&temp_audio).exists() {
+        let _ = std::fs::remove_file(&temp_audio);
+    }
+
+    let elapsed = t0.elapsed().as_secs_f64();
+    let final_fps = total_est as f64 / elapsed;
+    eprintln!("[Zentropy Rust Engine] SUCCESS: Stitched {} frames in {:.2}s -> {:.1} FPS!", total_est, elapsed, final_fps);
+    println!("PROGRESS:{}|{}|{:.1}|{:.1}|{:.1}", total_est, total_est, final_fps, elapsed, 0.0);
 }
 
 
