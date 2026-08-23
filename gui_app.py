@@ -330,7 +330,7 @@ class ZentropyControlCenter(ctk.CTk):
         )
         self.btn_seek_live.pack(side="left", padx=(0, 10))
 
-        # Auto-AI Toggle
+        # Auto-AI Trajectory Toggle
         self.switch_auto_ptz = ctk.CTkSwitch(
             r1, 
             text="Auto-AI Trajectory", 
@@ -338,7 +338,17 @@ class ZentropyControlCenter(ctk.CTk):
             progress_color="#10b981"
         )
         self.switch_auto_ptz.select()
-        self.switch_auto_ptz.pack(side="left", padx=(4, 10))
+        self.switch_auto_ptz.pack(side="left", padx=(4, 6))
+
+        # Dynamic Auto-Zoom Toggle
+        self.switch_dynamic_zoom = ctk.CTkSwitch(
+            r1, 
+            text="Dynamic Zoom", 
+            font=ctk.CTkFont(size=11, weight="bold"),
+            progress_color="#38bdf8"
+        )
+        self.switch_dynamic_zoom.select()
+        self.switch_dynamic_zoom.pack(side="left", padx=(4, 10))
 
         # Mobile Stream Button
         self.btn_toggle_stream = ctk.CTkButton(
@@ -348,10 +358,10 @@ class ZentropyControlCenter(ctk.CTk):
             fg_color="#10b981",
             hover_color="#059669",
             height=30,
-            width=180,
+            width=170,
             command=self.toggle_stream_server
         )
-        self.btn_toggle_stream.pack(side="right", padx=(8, 0))
+        self.btn_toggle_stream.pack(side="right", padx=(4, 0))
 
         # 3. BOTTOM SPLIT: 65% Program Monitor | 35% Tactical & Source Desk
         bottom_split = ctk.CTkFrame(container, fg_color="transparent")
@@ -391,6 +401,7 @@ class ZentropyControlCenter(ctk.CTk):
             corner_radius=6
         )
         self.lbl_live_16_9.pack(fill="both", expand=True, padx=8, pady=(1, 4))
+        self.lbl_live_16_9.bind("<MouseWheel>", self.on_ptz_scroll_zoom)
 
         # Monitor Bottom Status Row
         mon_footer = ctk.CTkFrame(left_monitor_card, height=22, fg_color="transparent")
@@ -398,7 +409,7 @@ class ZentropyControlCenter(ctk.CTk):
 
         self.lbl_live_time_display = ctk.CTkLabel(
             mon_footer, 
-            text="Position: 00:00:00 (Frame 0/13088) | ⚡ 60.0 FPS", 
+            text="Position: 00:00:00 (Frame 0/13088) | ⚡ 29.97 FPS", 
             font=ctk.CTkFont(family="Consolas", size=11, weight="bold"), 
             text_color="#94a3b8"
         )
@@ -406,7 +417,7 @@ class ZentropyControlCenter(ctk.CTk):
 
         self.lbl_live_telemetry_hud = ctk.CTkLabel(
             mon_footer,
-            text="PAN: 0.0° | ZOOM: 1.0x | OUT: 1080p60",
+            text="PAN: 0.0° | ZOOM: 1.00x | FOV: 55.0° | OUT: 1080p",
             font=ctk.CTkFont(family="Consolas", size=10),
             text_color="#38bdf8"
         )
@@ -441,16 +452,16 @@ class ZentropyControlCenter(ctk.CTk):
         self.lbl_tac_stability = ctk.CTkLabel(tac_grid, text="Stability: 99.4%", font=ctk.CTkFont(size=10), text_color="#10b981")
         self.lbl_tac_stability.grid(row=1, column=1, sticky="w", padx=6, pady=1)
 
-        # Secondary Hotspots Grid
+        # Quick Zoom & Tactical Presets
         sec_hot = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
         sec_hot.pack(fill="x", padx=8, pady=4)
-        ctk.CTkLabel(sec_hot, text="TACTICAL ANGLE PRESETS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(anchor="w")
+        ctk.CTkLabel(sec_hot, text="QUICK ZOOM & PRESETS (PTZ)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(anchor="w")
 
         grid_frame = ctk.CTkFrame(sec_hot, fg_color="transparent")
         grid_frame.pack(fill="x", pady=2)
-        ctk.CTkButton(grid_frame, text="Left Box", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.28)).grid(row=0, column=0, sticky="ew", padx=2, pady=1)
-        ctk.CTkButton(grid_frame, text="Mid Center", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.50)).grid(row=0, column=1, sticky="ew", padx=2, pady=1)
-        ctk.CTkButton(grid_frame, text="Right Box", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.72)).grid(row=0, column=2, sticky="ew", padx=2, pady=1)
+        ctk.CTkButton(grid_frame, text="🔍 1.0x Wide", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_zoom(1920.0)).grid(row=0, column=0, sticky="ew", padx=2, pady=1)
+        ctk.CTkButton(grid_frame, text="🔍 1.25x Mid", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_zoom(1536.0)).grid(row=0, column=1, sticky="ew", padx=2, pady=1)
+        ctk.CTkButton(grid_frame, text="🔍 1.45x Goal", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_zoom(1324.0)).grid(row=0, column=2, sticky="ew", padx=2, pady=1)
         grid_frame.columnconfigure((0, 1, 2), weight=1)
 
         # Source Pickers
@@ -916,9 +927,12 @@ class ZentropyControlCenter(ctk.CTk):
             self.lbl_live_16_9.image = ctk_broad
 
         # Live telemetry display update
+        # Live telemetry display update with dynamic zoom factor
         yaw_deg = (self.live_ptz_x - 0.5) * 90.0
+        zoom_level = 1920.0 / max(100.0, float(self.live_ptz_w))
+        fov_deg = 55.0 / zoom_level
         self.lbl_live_telemetry_hud.configure(
-            text=f"PAN: {yaw_deg:+5.1f}° | FOV: 55° | DEADBAND: 18% | OUT: 1080p"
+            text=f"PAN: {yaw_deg:+5.1f}° | ZOOM: {zoom_level:.2f}x | FOV: {fov_deg:.1f}° | OUT: 1080p"
         )
 
         # Tactical zone estimation
@@ -942,6 +956,16 @@ class ZentropyControlCenter(ctk.CTk):
 
     def set_ptz_pos(self, pos):
         self.live_ptz_x = pos
+        self.render_live_studio_views()
+
+    def set_ptz_zoom(self, crop_w):
+        self.live_ptz_w = float(crop_w)
+        self.render_live_studio_views()
+
+    def on_ptz_scroll_zoom(self, event):
+        delta = event.delta
+        zoom_step = 80.0 if delta > 0 else -80.0
+        self.live_ptz_w = np.clip(self.live_ptz_w - zoom_step, 1200.0, 2400.0)
         self.render_live_studio_views()
 
     def parse_time_to_seconds(self, time_str):
@@ -1035,12 +1059,11 @@ class ZentropyControlCenter(ctk.CTk):
             
             self.live_current_frame = frame
             
-            # Ultra-Stable Cosine Deadband Tracking (GPU & Math Optimized)
+            # Ultra-Stable Cosine Deadband Tracking with Broadcast Dynamic Auto-Zoom
             if self.switch_auto_ptz.get():
                 if self.live_trajectory and frame_idx in self.live_trajectory:
                     entry = self.live_trajectory[frame_idx]
                     target_cx = entry["cx"]
-                    target_cw = entry["cw"]
                     self.live_current_ball = entry.get("ball", None)
                     self.live_active_players = entry.get("players", 12)
 
@@ -1050,9 +1073,25 @@ class ZentropyControlCenter(ctk.CTk):
                         if last_ball_x is not None:
                             disp = abs(bx - last_ball_x)
                             speed_est = np.clip(disp * 1.8, 0, 95)
+                            self.live_ball_speed = speed_est
                             self.lbl_tac_speed.configure(text=f"Ball Est: {speed_est:.0f} km/h")
                         last_ball_x = bx
                     
+                    # ─── BROADCAST DYNAMIC AUTO-ZOOM CALCULATION ─────────
+                    if self.switch_dynamic_zoom.get():
+                        # Calculate action offset from pitch center (0.0=center, 0.35=goalmouth)
+                        pan_offset = abs(curr_cx / float(w) - 0.5)
+                        proximity = np.clip(pan_offset / 0.30, 0.0, 1.0)
+                        
+                        # Smooth transition from Wide Midfield (1920px = 1.0x) to Tight Goal Action (1350px = 1.42x)
+                        target_cw = 1920.0 - proximity * 570.0
+                        
+                        # If ball is traveling fast, widen slightly for flight trajectory context
+                        if hasattr(self, 'live_ball_speed') and self.live_ball_speed > 40:
+                            target_cw = min(2000.0, target_cw + 220.0)
+                    else:
+                        target_cw = 1920.0
+
                     deadband = (curr_cw * 0.18)
                     dist = target_cx - curr_cx
                     if abs(dist) < deadband:
@@ -1065,10 +1104,10 @@ class ZentropyControlCenter(ctk.CTk):
                     curr_vel_x = np.clip(curr_vel_x, -14.0, 14.0)
 
                     curr_cx += curr_vel_x
-                    curr_cw = curr_cw * 0.96 + target_cw * 0.04
+                    curr_cw = curr_cw * 0.95 + target_cw * 0.05
 
                     self.live_ptz_x = np.clip(curr_cx / float(w), 0.15, 0.85)
-                    self.live_ptz_w = np.clip(curr_cw, 1400, w)
+                    self.live_ptz_w = np.clip(curr_cw, 1250, w)
                 else:
                     t = time.time() * 0.4
                     self.live_ptz_x = 0.5 + 0.20 * np.sin(t)
