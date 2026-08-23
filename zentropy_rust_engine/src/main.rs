@@ -195,7 +195,7 @@ fn main() {
 
     let work_dur = dur_sec.unwrap_or(10.0);
     let total_est = (work_dur * 29.97) as usize;
-    let chunks = if work_dur < 4.0 { 1 } else { num_chunks };
+    let chunks = if work_dur < 60.0 { 1 } else { num_chunks };
 
     eprintln!("[Zentropy Rust Engine] Spawning {}-Way Parallel Ultra-Speed NVDEC/Rayon/NVENC Workers...", chunks);
 
@@ -245,8 +245,8 @@ fn main() {
         {
             let mut cf = File::create(&concat_txt).unwrap();
             for file in &chunk_files {
-                let abs = std::fs::canonicalize(file).unwrap();
-                let abs_str = abs.to_str().unwrap().replace(r"\\?\", "");
+                let abs = std::fs::canonicalize(file).unwrap_or_else(|_| std::path::PathBuf::from(file));
+                let abs_str = abs.to_str().unwrap().replace(r"\\?\", "").replace('\\', "/");
                 writeln!(cf, "file '{}'", abs_str).unwrap();
             }
         }
@@ -257,7 +257,10 @@ fn main() {
             cmd_merge.args(["-i", &temp_audio, "-map", "0:v", "-map", "1:a:0?", "-c:a", "aac"]);
         }
         cmd_merge.args(["-c:v", "copy", "-shortest", &output]);
-        let _ = cmd_merge.status();
+        let status = cmd_merge.status();
+        if let Err(e) = status {
+            eprintln!("[Zentropy Rust Engine] Concat error: {}", e);
+        }
 
         for f in chunk_files { let _ = std::fs::remove_file(f); }
         let _ = std::fs::remove_file(concat_txt);
