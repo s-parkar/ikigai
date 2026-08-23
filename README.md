@@ -176,6 +176,8 @@ python generate_ball_tracking_feed.py \
 
 ## Sample Output & Verification
 
+> 📁 **Download Full Demo Clips:** [Google Drive Demo Folder](https://drive.google.com/drive/folders/1qsQ75lYiWVV9820clUnQaFkagmcScvXR?usp=drive_link)
+
 | Output Artifact | Specifications | Status / Verification |
 | :--- | :--- | :--- |
 | **`stitched_panorama_full.mp4`** | $3200 \times 1080$ @ 29.97 fps, NVENC H.264, ~52.7 Mbps | Complete match ($7\text{m } 16\text{s}$, 13,088 frames), zero black borders, natural bottom turf, both goalposts visible. |
@@ -211,3 +213,11 @@ python generate_ball_tracking_feed.py \
 - **AI & Object Detection:** `Ultralytics YOLO` (`yolov8n.pt` / `yolo11n.pt`), `PyTorch`, `TorchVision`
 - **Underlying Engine:** `Rust` (wgpu 28, Slint, Reco Sports Video toolchain)
 - **Networking & Streaming:** Python `http.server`, `socket`, MJPEG over HTTP
+
+---
+
+## 🎬 Demo Videos & Deliverables
+
+Full-length rendered demo videos (including master $3200 \times 1080$ panoramic match footage, AI 16:9 broadcast cuts, and ball tracking visualizer feeds) are available for evaluation:
+
+📁 **[Google Drive Demo Folder — Video Outputs & Benchmark Clips](https://drive.google.com/drive/folders/1qsQ75lYiWVV9820clUnQaFkagmcScvXR?usp=drive_link)**
