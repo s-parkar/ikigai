@@ -443,6 +443,13 @@ class ZentropyControlCenter(ctk.CTk):
         self.entry_live_pano.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_src, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=1, column=2, padx=15, pady=5)
 
+        # Trajectory import for direct auto-pan & zoom replay
+        ctk.CTkLabel(card_src, text="Import Trajectory (.jsonl):").grid(row=2, column=0, sticky="w", padx=15, pady=5)
+        self.entry_live_coords = ctk.CTkEntry(card_src, width=450, placeholder_text="Optional: Select ball_trajectory_events.jsonl")
+        self.entry_live_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
+        self.entry_live_coords.grid(row=2, column=1, sticky="ew", padx=10, pady=5)
+        ctk.CTkButton(card_src, text="Load / Browse...", width=90, command=self.load_live_trajectory_file).grid(row=2, column=2, padx=15, pady=5)
+
         # Start Time & Seek Bar
         time_bar = ctk.CTkFrame(card_src, fg_color="transparent")
         time_bar.grid(row=3, column=0, columnspan=3, sticky="ew", padx=15, pady=5)
