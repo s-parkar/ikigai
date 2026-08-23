@@ -8,7 +8,7 @@
 
 ## Overview
 
-This system ingests two overlapping video feeds recorded by smartphones placed on a central halfway-line rig (Left-Hand Side and Right-Hand Side cameras), performs cylindrical feature alignment and CIELAB photometric matching to construct a seamless $3200 \times 1080$ panoramic view, and applies an AI ball and player tracking auto-panner to output a broadcast-ready 1080p 16:9 video without a human camera operator. The system provides a modern desktop graphical interface (GUI Control Center), a local Wi-Fi mobile broadcast server, and modular CLI pipeline engines backed by GPU-accelerated video encoders and the open-source Reco video processing toolchain.
+This system ingests two overlapping video feeds recorded by smartphones placed on a central halfway-line rig (Left-Hand Side and Right-Hand Side cameras), performs cylindrical feature alignment and CIELAB photometric matching to construct a seamless $3200 \times 1080$ panoramic view, and applies an AI ball and player tracking auto-panner to output a broadcast-ready 1080p 16:9 video without a human camera operator. The system provides a modern desktop graphical interface (GUI Control Center), a local Wi-Fi mobile broadcast server, and modular CLI pipeline engines backed by GPU-accelerated video encoders and the Zentropy video processing toolchain.
 
 ---
 

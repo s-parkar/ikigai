@@ -29,7 +29,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
             <html>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Reco Live Broadcast Preview</title>
+                <title>Zentropy Live Broadcast Preview</title>
                 <style>
                     body { background: #0f172a; color: #f8fafc; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
                     h2 { color: #10b981; margin-bottom: 8px; }
@@ -38,7 +38,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
                 </style>
             </head>
             <body>
-                <h2>Reco AI Broadcast Live Stream</h2>
+                <h2>Zentropy AI Broadcast Live Stream</h2>
                 <span class="badge">Live 16:9 Virtual PTZ Feed</span><br>
                 <img src="/stream.mjpg" />
             </body>

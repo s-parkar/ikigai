@@ -150,9 +150,9 @@ def generate_ball_tracking_feed(input_video, output_video, model_name="yolov8n.p
                 cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
 
         # HUD Overlay
-        cv2.rectangle(frame, (20, 20), (360, 110), (15, 23, 42), -1)
-        cv2.rectangle(frame, (20, 20), (360, 110), (51, 65, 85), 2)
-        cv2.putText(frame, "RECO AI BALL TRACKER", (35, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (16, 185, 129), 2, cv2.LINE_AA)
+        cv2.rectangle(frame, (20, 20), (380, 110), (15, 23, 42), -1)
+        cv2.rectangle(frame, (20, 20), (380, 110), (51, 65, 85), 2)
+        cv2.putText(frame, "ZENTROPY AI BALL TRACKER", (35, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (16, 185, 129), 2, cv2.LINE_AA)
         cv2.putText(frame, f"Ball Status: {'LOCKED' if current_ball else 'SEARCHING'}", (35, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255) if current_ball else (148, 163, 184), 1, cv2.LINE_AA)
         cv2.putText(frame, f"Active Players: {player_count} | Frame: {count}", (35, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (226, 232, 240), 1, cv2.LINE_AA)
 

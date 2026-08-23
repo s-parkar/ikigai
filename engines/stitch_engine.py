@@ -1,4 +1,4 @@
-"""Stitching Engine for Reco Panoramic Video Generation.
+"""Stitching Engine for Zentropy Panoramic Video Generation.
 
 Provides both CLI and Python API with real-time callbacks.
 """

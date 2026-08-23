@@ -1,4 +1,4 @@
-"""Reco GUI Control Center & Pipeline Manager.
+"""Zentropy GUI Control Center & Pipeline Manager.
 
 Graphical Desktop Suite for Panoramic Stitching, AI Tracking, and Live Broadcast Studio.
 """
@@ -39,12 +39,12 @@ DEFAULT_CONFIG = {
     "live_pano_source": "stitched_panorama_full.mp4"
 }
 
-class RecoControlCenter(ctk.CTk):
+class ZentropyControlCenter(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Reco AI Broadcast Control Center - Pipeline Manager")
-        self.geometry("1240x900")
+        self.title("Zentropy AI Broadcast Control Center - Pipeline Manager")
+        self.geometry("1260x920")
         self.minsize(1100, 800)
 
         self.config_data = self.load_config()
@@ -91,7 +91,7 @@ class RecoControlCenter(ctk.CTk):
 
         self.logo_label = ctk.CTkLabel(
             self.header_frame, 
-            text="⚽ RECO AI BROADCAST STUDIO", 
+            text="⚽ ZENTROPY AI BROADCAST STUDIO", 
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#10b981"
         )
@@ -257,7 +257,7 @@ class RecoControlCenter(ctk.CTk):
 
         # Optional Coordinates JSONL
         ctk.CTkLabel(card_in, text="Import Coordinates (.jsonl):").grid(row=3, column=0, sticky="w", padx=15, pady=5)
-        self.entry_coords = ctk.CTkEntry(card_in, width=450, placeholder_text="Optional: Select detections.jsonl / events.jsonl")
+        self.entry_coords = ctk.CTkEntry(card_in, width=450, placeholder_text="Optional: Select ball_trajectory_events.jsonl")
         self.entry_coords.grid(row=3, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_in, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_coords)).grid(row=3, column=2, padx=15, pady=5)
 
@@ -288,8 +288,8 @@ class RecoControlCenter(ctk.CTk):
 
         self.btn_run_track = ctk.CTkButton(
             btn_row, 
-            text="▶ GENERATE 16:9 AUTO-BROADCAST", 
-            font=ctk.CTkFont(size=13, weight="bold"),
+            text="▶ GENERATE 16:9 BROADCAST", 
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#3b82f6", 
             hover_color="#2563eb",
             height=40,
@@ -299,23 +299,34 @@ class RecoControlCenter(ctk.CTk):
 
         self.btn_run_ball_feed = ctk.CTkButton(
             btn_row, 
-            text="🎯 GENERATE BALL TRACKING FEED", 
-            font=ctk.CTkFont(size=13, weight="bold"),
+            text="🎯 BALL TRACKING FEED", 
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#f59e0b", 
             hover_color="#d97706",
             height=40,
             command=self.start_ball_feed_job
         )
-        self.btn_run_ball_feed.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.btn_run_ball_feed.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btn_export_json = ctk.CTkButton(
+            btn_row, 
+            text="📄 EXPORT JSON/JSONL", 
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="#8b5cf6", 
+            hover_color="#7c3aed",
+            height=40,
+            command=self.start_export_json_job
+        )
+        self.btn_export_json.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         self.btn_abort_track = ctk.CTkButton(
             btn_row, 
             text="⏹ ABORT", 
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#ef4444", 
             hover_color="#dc2626",
             height=40,
-            width=90,
+            width=80,
             state="disabled",
             command=self.abort_job
         )
@@ -342,12 +353,11 @@ class RecoControlCenter(ctk.CTk):
         self.btn_play_prev = ctk.CTkButton(ctrl_row, text="▶ Play Preview", width=120, command=self.toggle_preview_playback)
         self.btn_play_prev.pack(side="left", padx=(0, 10))
 
-    # ─── TAB 3: LIVE BROADCAST STUDIO (DIRECT PROCESSED PANORAMA & PTZ) 
+    # ─── TAB 3: LIVE BROADCAST STUDIO ──────────────────────────────────
     def build_ptz_tab(self):
         container = ctk.CTkScrollableFrame(self.tab_ptz, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Card 1: Panorama Source Selection
         card_src = ctk.CTkFrame(container, corner_radius=8, fg_color="#1e293b")
         card_src.pack(fill="x", pady=5, padx=5)
 
@@ -362,11 +372,10 @@ class RecoControlCenter(ctk.CTk):
 
         card_src.columnconfigure(1, weight=1)
 
-        # Card 2: Interactive Dual-View Studio
+        # Dual-View Studio
         card_views = ctk.CTkFrame(container, corner_radius=8, fg_color="#1e293b")
         card_views.pack(fill="both", expand=True, pady=10, padx=5)
 
-        # Top: Wide Panorama Canvas with PTZ Box
         lbl_pano_title = ctk.CTkLabel(card_views, text="1. FULL FIELD PANORAMA (DRAG GREEN BOX TO PAN)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#10b981")
         lbl_pano_title.pack(anchor="w", padx=15, pady=(10, 2))
 
@@ -375,14 +384,13 @@ class RecoControlCenter(ctk.CTk):
         self.ptz_canvas.bind("<B1-Motion>", self.on_ptz_drag)
         self.ptz_canvas.bind("<Button-1>", self.on_ptz_drag)
 
-        # Bottom: Live 16:9 Broadcast Output Viewport
         lbl_out_title = ctk.CTkLabel(card_views, text="2. LIVE 16:9 BROADCAST OUTPUT (DIRECT CROPPED VIEWPORT)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#38bdf8")
         lbl_out_title.pack(anchor="w", padx=15, pady=(10, 2))
 
         self.lbl_live_16_9 = ctk.CTkLabel(card_views, text="Live Broadcast Viewport", height=240, fg_color="#090d16", corner_radius=6)
         self.lbl_live_16_9.pack(fill="both", expand=True, padx=15, pady=5)
 
-        # Live Controls Bar
+        # Controls Bar
         ctrl_bar = ctk.CTkFrame(card_views, fg_color="transparent")
         ctrl_bar.pack(fill="x", padx=15, pady=10)
 
@@ -398,16 +406,14 @@ class RecoControlCenter(ctk.CTk):
         )
         self.btn_live_play.pack(side="left", padx=(0, 10))
 
-        # Hotspots
         ctk.CTkButton(ctrl_bar, text="◀ Left Goal", width=95, height=36, command=lambda: self.set_ptz_pos(0.15)).pack(side="left", padx=3)
         ctk.CTkButton(ctrl_bar, text="⚽ Center", width=95, height=36, command=lambda: self.set_ptz_pos(0.50)).pack(side="left", padx=3)
         ctk.CTkButton(ctrl_bar, text="Right Goal ▶", width=95, height=36, command=lambda: self.set_ptz_pos(0.85)).pack(side="left", padx=3)
 
-        # Auto-track toggle
         self.switch_auto_ptz = ctk.CTkSwitch(ctrl_bar, text="Auto AI Track", font=ctk.CTkFont(size=12))
         self.switch_auto_ptz.pack(side="right", padx=10)
 
-        # Card 3: Mobile LAN Stream Server
+        # Mobile LAN Stream Server
         card_stream = ctk.CTkFrame(container, corner_radius=8, fg_color="#1e293b")
         card_stream.pack(fill="x", pady=5, padx=5)
 
@@ -435,7 +441,6 @@ class RecoControlCenter(ctk.CTk):
         )
         self.lbl_stream_url.pack(side="left")
 
-        # Initial frame render
         self.load_initial_live_frame()
 
     def load_initial_live_frame(self):
@@ -461,7 +466,6 @@ class RecoControlCenter(ctk.CTk):
         frame = self.live_current_frame
         h, w = frame.shape[:2]
 
-        # 1. Update Panoramic Canvas with PTZ Box
         cw = self.ptz_canvas.winfo_width() or 800
         ch = 180
         resized_pano = cv2.resize(frame, (cw, ch))
@@ -482,7 +486,6 @@ class RecoControlCenter(ctk.CTk):
         self.ptz_canvas.create_rectangle(x1, y1, x2, y2, outline="#10b981", width=3)
         self.ptz_canvas.create_text((x1 + x2)//2, y1 + 14, text="16:9 BROADCAST VIEWPORT", fill="#10b981", font=("Segoe UI", 10, "bold"))
 
-        # 2. Extract & Render 16:9 Broadcast Frame
         crop_h = h
         crop_w = int(crop_h * 16.0 / 9.0)
         if crop_w > w:
@@ -497,7 +500,6 @@ class RecoControlCenter(ctk.CTk):
 
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
-        # Render to preview widget
         disp_w = 540
         disp_h = int(disp_w * 9.0 / 16.0)
         resized_broad = cv2.resize(broadcast_crop, (disp_w, disp_h))
@@ -506,7 +508,6 @@ class RecoControlCenter(ctk.CTk):
         self.lbl_live_16_9.configure(image=photo_broad, text="")
         self.lbl_live_16_9.image = photo_broad
 
-        # Push to stream server if active
         if self.stream_server and self.stream_server.running:
             self.stream_server.update_frame(broadcast_crop)
 
@@ -543,14 +544,12 @@ class RecoControlCenter(ctk.CTk):
             
             self.live_current_frame = frame
             
-            # If auto-track switch is ON, auto-pan gently based on frame action
             if self.switch_auto_ptz.get():
-                # Smooth auto sway
                 t = time.time() * 0.5
                 self.live_ptz_x = 0.5 + 0.25 * np.sin(t)
 
             self.render_live_studio_views()
-            time.sleep(0.033) # 30 fps
+            time.sleep(0.033)
         cap.release()
 
     def toggle_stream_server(self):
@@ -582,7 +581,7 @@ class RecoControlCenter(ctk.CTk):
 
         self.log_text = ctk.CTkTextbox(self.console_frame, height=110, font=ctk.CTkFont(family="Consolas", size=11), fg_color="#090d16", text_color="#e2e8f0")
         self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 5))
-        self.log_message("Reco AI Broadcast Control Center Initialized.")
+        self.log_message("Zentropy AI Broadcast Control Center Initialized.")
 
     def log_message(self, text):
         self.log_text.insert("end", f"[{time.strftime('%H:%M:%S')}] {text}\n")
@@ -596,7 +595,7 @@ class RecoControlCenter(ctk.CTk):
 
     # ─── FILE PICKER HELPERS ───────────────────────────────────────────
     def browse_file(self, entry_widget):
-        f = filedialog.askopenfilename(filetypes=[("Video Files", "*.mp4 *.mov *.mkv *.avi"), ("All Files", "*.*")])
+        f = filedialog.askopenfilename(filetypes=[("Video / JSON Files", "*.mp4 *.mov *.mkv *.avi *.jsonl *.json"), ("All Files", "*.*")])
         if f:
             entry_widget.delete(0, "end")
             entry_widget.insert(0, f)
@@ -666,6 +665,7 @@ class RecoControlCenter(ctk.CTk):
         self.set_status("AI TRACKING IN PROGRESS", "#3b82f6")
         self.btn_run_track.configure(state="disabled")
         self.btn_run_ball_feed.configure(state="disabled")
+        self.btn_export_json.configure(state="disabled")
         self.btn_abort_track.configure(state="normal")
         self.cancel_requested = False
 
@@ -689,6 +689,7 @@ class RecoControlCenter(ctk.CTk):
             finally:
                 self.btn_run_track.configure(state="normal")
                 self.btn_run_ball_feed.configure(state="normal")
+                self.btn_export_json.configure(state="normal")
                 self.btn_abort_track.configure(state="disabled")
 
         t = threading.Thread(target=worker, daemon=True)
@@ -706,6 +707,7 @@ class RecoControlCenter(ctk.CTk):
         self.set_status("GENERATING BALL TRACKING FEED", "#f59e0b")
         self.btn_run_track.configure(state="disabled")
         self.btn_run_ball_feed.configure(state="disabled")
+        self.btn_export_json.configure(state="disabled")
         self.btn_abort_track.configure(state="normal")
         self.cancel_requested = False
 
@@ -724,6 +726,51 @@ class RecoControlCenter(ctk.CTk):
             finally:
                 self.btn_run_track.configure(state="normal")
                 self.btn_run_ball_feed.configure(state="normal")
+                self.btn_export_json.configure(state="normal")
+                self.btn_abort_track.configure(state="disabled")
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+    def start_export_json_job(self):
+        pano = self.entry_pano_in.get().strip()
+        model = self.entry_model.get().strip()
+        out_jsonl = "ball_trajectory_events.jsonl"
+        out_json = "ball_trajectory.json"
+
+        if not os.path.exists(pano):
+            messagebox.showerror("File Error", f"Panoramic video not found: {pano}")
+            return
+
+        self.set_status("EXPORTING TRAJECTORY JSON", "#8b5cf6")
+        self.btn_run_track.configure(state="disabled")
+        self.btn_run_ball_feed.configure(state="disabled")
+        self.btn_export_json.configure(state="disabled")
+        self.btn_abort_track.configure(state="normal")
+        self.cancel_requested = False
+
+        self.log_message(f"Exporting Ball & Player Trajectory Coordinates: {pano} -> {out_jsonl}")
+
+        def worker():
+            from export_ball_trajectory_json import export_tracking_coordinates
+            try:
+                def cb(c, tot, fps, el, eta):
+                    pct = c / tot if tot > 0 else 0
+                    self.track_prog_bar.set(pct)
+                    self.lbl_track_stats.configure(text=f"Exporting Coordinates: {c}/{tot} ({pct*100:.1f}%) | Speed: {fps:.1f} FPS | ETA: {eta:.1f}s")
+
+                export_tracking_coordinates(pano, out_jsonl, out_json, model_name=model, progress_callback=cb, cancel_flag=lambda: self.cancel_requested)
+                self.log_message(f"Trajectory Coordinates Exported Successfully:\n1. {out_jsonl}\n2. {out_json}")
+                self.set_status("COMPLETED", "#10b981")
+                self.entry_coords.delete(0, "end")
+                self.entry_coords.insert(0, out_jsonl)
+            except Exception as e:
+                self.log_message(f"Error exporting coordinates: {e}")
+                self.set_status("ERROR", "#ef4444")
+            finally:
+                self.btn_run_track.configure(state="normal")
+                self.btn_run_ball_feed.configure(state="normal")
+                self.btn_export_json.configure(state="normal")
                 self.btn_abort_track.configure(state="disabled")
 
         t = threading.Thread(target=worker, daemon=True)
@@ -796,5 +843,5 @@ class RecoControlCenter(ctk.CTk):
         self.destroy()
 
 if __name__ == "__main__":
-    app = RecoControlCenter()
+    app = ZentropyControlCenter()
     app.mainloop()
