@@ -284,39 +284,42 @@ class ZentropyControlCenter(ctk.CTk):
         self.ptz_canvas.bind("<B1-Motion>", self.on_ptz_drag)
         self.ptz_canvas.bind("<Button-1>", self.on_ptz_drag)
 
-        # 2. MIDDLE ROW: PERSISTENT MASTER CONTROL & HOTSPOT SWITCHER BAR (ALWAYS ON SCREEN)
-        ctrl_bar = ctk.CTkFrame(container, height=44, corner_radius=8, fg_color="#0d1424", border_width=1, border_color="#1e293b")
+        # 2. MIDDLE ROW: PERSISTENT MASTER CONTROL & HOTSPOT SWITCHER BAR
+        ctrl_bar = ctk.CTkFrame(container, corner_radius=8, fg_color="#0d1424", border_width=1, border_color="#1e293b")
         ctrl_bar.pack(fill="x", padx=4, pady=(0, 4))
 
         cb_inner = ctk.CTkFrame(ctrl_bar, fg_color="transparent")
-        cb_inner.pack(fill="x", padx=10, pady=4)
+        cb_inner.pack(fill="x", padx=8, pady=4)
 
-        # Main Play Button
+        # Row 1: Primary Broadcast Actions
+        r1 = ctk.CTkFrame(cb_inner, fg_color="transparent")
+        r1.pack(fill="x", pady=(2, 2))
+
         self.btn_live_play = ctk.CTkButton(
-            cb_inner,
+            r1,
             text="▶ START BROADCAST",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#10b981",
             hover_color="#059669",
             height=32,
-            width=170,
+            width=180,
             command=self.toggle_live_playback
         )
         self.btn_live_play.pack(side="left", padx=(0, 8))
 
         # Hotspot Presets
-        ctk.CTkButton(cb_inner, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.15)).pack(side="left", padx=2)
-        ctk.CTkButton(cb_inner, text="⚽ Midfield", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.50)).pack(side="left", padx=2)
-        ctk.CTkButton(cb_inner, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.85)).pack(side="left", padx=2)
+        ctk.CTkButton(r1, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=95, command=lambda: self.set_ptz_pos(0.15)).pack(side="left", padx=2)
+        ctk.CTkButton(r1, text="⚽ Midfield", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=95, command=lambda: self.set_ptz_pos(0.50)).pack(side="left", padx=2)
+        ctk.CTkButton(r1, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=95, command=lambda: self.set_ptz_pos(0.85)).pack(side="left", padx=2)
 
         # Seeking Box
-        ctk.CTkLabel(cb_inner, text="Seek:", font=ctk.CTkFont(size=11), text_color="#94a3b8").pack(side="left", padx=(10, 4))
-        self.entry_live_start = ctk.CTkEntry(cb_inner, width=70, height=28, font=ctk.CTkFont(family="Consolas", size=11))
+        ctk.CTkLabel(r1, text="Seek:", font=ctk.CTkFont(size=11), text_color="#94a3b8").pack(side="left", padx=(10, 4))
+        self.entry_live_start = ctk.CTkEntry(r1, width=70, height=28, font=ctk.CTkFont(family="Consolas", size=11))
         self.entry_live_start.insert(0, "00:00:00")
         self.entry_live_start.pack(side="left", padx=(0, 4))
 
         self.btn_seek_live = ctk.CTkButton(
-            cb_inner, 
+            r1, 
             text="⏩ Jump", 
             width=60, 
             height=28, 
@@ -325,30 +328,30 @@ class ZentropyControlCenter(ctk.CTk):
             hover_color="#2563eb",
             command=self.seek_live_start_time
         )
-        self.btn_seek_live.pack(side="left", padx=(0, 8))
+        self.btn_seek_live.pack(side="left", padx=(0, 10))
 
-        # Trajectory Toggle
+        # Auto-AI Toggle
         self.switch_auto_ptz = ctk.CTkSwitch(
-            cb_inner, 
+            r1, 
             text="Auto-AI Trajectory", 
             font=ctk.CTkFont(size=11, weight="bold"),
             progress_color="#10b981"
         )
         self.switch_auto_ptz.select()
-        self.switch_auto_ptz.pack(side="left", padx=(8, 0))
+        self.switch_auto_ptz.pack(side="left", padx=(4, 10))
 
         # Mobile Stream Button
         self.btn_toggle_stream = ctk.CTkButton(
-            cb_inner,
-            text="📡 Mobile Stream (OFF)",
+            r1,
+            text="📡 START MOBILE STREAM",
             font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color="#131c31",
-            hover_color="#10b981",
+            fg_color="#10b981",
+            hover_color="#059669",
             height=30,
-            width=160,
+            width=180,
             command=self.toggle_stream_server
         )
-        self.btn_toggle_stream.pack(side="right")
+        self.btn_toggle_stream.pack(side="right", padx=(8, 0))
 
         # 3. BOTTOM SPLIT: 65% Program Monitor | 35% Tactical & Source Desk
         bottom_split = ctk.CTkFrame(container, fg_color="transparent")
@@ -881,25 +884,30 @@ class ZentropyControlCenter(ctk.CTk):
 
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
-        # Scale to fit monitor stage cleanly without expanding parent window
+        # Scale to fit monitor stage cleanly and fill maximum 16:9 space
         raw_mon_w = self.lbl_live_16_9.winfo_width()
         raw_mon_h = self.lbl_live_16_9.winfo_height()
+        avail_w = raw_mon_w if raw_mon_w > 100 else 800
+        avail_h = raw_mon_h if raw_mon_h > 100 else 460
         
-        target_h = max(220, min(360, raw_mon_h if raw_mon_h > 50 else 300))
-        target_w = max(390, int(target_h * 16.0 / 9.0))
-        if raw_mon_w > 50 and target_w > raw_mon_w:
-            target_w = raw_mon_w
-            target_h = int(target_w * 9.0 / 16.0)
-            
-        mon_w, mon_h = target_w, target_h
+        if avail_w / 16.0 < avail_h / 9.0:
+            mon_w = avail_w
+            mon_h = int(mon_w * 9.0 / 16.0)
+        else:
+            mon_h = avail_h
+            mon_w = int(mon_h * 16.0 / 9.0)
+
+        mon_w = max(480, mon_w)
+        mon_h = max(270, mon_h)
         
         if broadcast_crop is not None and broadcast_crop.size > 0:
             resized_broad = cv2.resize(broadcast_crop, (mon_w, mon_h))
             
-            # Add Pro TV Broadcast HUD overlay on video
-            cv2.rectangle(resized_broad, (15, 15), (135, 42), (15, 23, 42), -1)
-            cv2.rectangle(resized_broad, (15, 15), (135, 42), (30, 41, 59), 1)
-            cv2.putText(resized_broad, "🔴 LIVE HD", (23, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (239, 68, 68), 2, cv2.LINE_AA)
+            # Add Pro TV Broadcast HUD overlay on video with crisp circle indicator
+            cv2.rectangle(resized_broad, (15, 15), (115, 42), (15, 23, 42), -1)
+            cv2.rectangle(resized_broad, (15, 15), (115, 42), (30, 41, 59), 1)
+            cv2.circle(resized_broad, (28, 28), 5, (0, 0, 255), -1)
+            cv2.putText(resized_broad, "LIVE HD", (40, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2, cv2.LINE_AA)
 
             rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
             pil_broad = Image.fromarray(rgb_broad)
@@ -910,7 +918,7 @@ class ZentropyControlCenter(ctk.CTk):
         # Live telemetry display update
         yaw_deg = (self.live_ptz_x - 0.5) * 90.0
         self.lbl_live_telemetry_hud.configure(
-            text=f"PAN: {yaw_deg:+5.1f}° | FOV: 55° | DEADBAND: 18% | OUT: 1080p60"
+            text=f"PAN: {yaw_deg:+5.1f}° | FOV: 55° | DEADBAND: 18% | OUT: 1080p"
         )
 
         # Tactical zone estimation
@@ -1009,7 +1017,8 @@ class ZentropyControlCenter(ctk.CTk):
         curr_vel_x = 0.0
         last_ball_x = None
 
-        target_fps = 60.0 # TURBO 60 FPS
+        # Natural 1.0x Real-Time Match Speed
+        target_fps = fps if (fps and fps > 10.0 and fps < 120.0) else 29.97
         frame_interval = 1.0 / target_fps
 
         t_last_fps = time.perf_counter()
