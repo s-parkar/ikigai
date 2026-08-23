@@ -14,11 +14,43 @@ import numpy as np
 
 FFMPEG_BIN = r'C:\Users\yashs\ffmpeg-7.1-full_build-shared\bin\ffmpeg.exe'
 
-def compute_calibration_maps(img_l_path, img_r_path, f=1450.0, target_w=3200, target_h=1080):
-    img_l = cv2.imread(img_l_path)
-    img_r = cv2.imread(img_r_path)
+def load_or_extract_reference_frame(path_or_video):
+    if not path_or_video:
+        return None
+    # 1. If it's directly a readable image
+    if os.path.exists(path_or_video) and not path_or_video.lower().endswith(('.mov', '.mp4', '.mkv', '.avi')):
+        img = cv2.imread(path_or_video)
+        if img is not None:
+            return img
+
+    # 2. Check debug_artifacts/frames/
+    base_name = os.path.basename(path_or_video)
+    debug_path = os.path.join("debug_artifacts", "frames", base_name)
+    if os.path.exists(debug_path) and not debug_path.lower().endswith(('.mov', '.mp4', '.mkv', '.avi')):
+        img = cv2.imread(debug_path)
+        if img is not None:
+            return img
+
+    # 3. If it's a video file, decode a frame at 3 seconds / 90 frames
+    if os.path.exists(path_or_video):
+        cap = cv2.VideoCapture(path_or_video)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 90)
+            ret, frame = cap.read()
+            if not ret:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None:
+                return frame
+
+    return None
+
+def compute_calibration_maps(img_l_source, img_r_source, f=1450.0, target_w=3200, target_h=1080):
+    img_l = load_or_extract_reference_frame(img_l_source)
+    img_r = load_or_extract_reference_frame(img_r_source)
     if img_l is None or img_r is None:
-        raise ValueError(f"Could not read calibration reference images: {img_l_path}, {img_r_path}")
+        raise ValueError(f"Could not load or extract calibration reference frames from: {img_l_source}, {img_r_source}")
         
     w, h = img_l.shape[1], img_l.shape[0]
 
@@ -175,8 +207,14 @@ def run_stitching(lhs_video, rhs_video, output_video, start_time="00:00:00", dur
     total_frames_in = int(cap_l.get(cv2.CAP_PROP_FRAME_COUNT))
     cap_l.release()
 
-    ref_img_l = 'lhs_raw_3m.jpg' if os.path.exists('lhs_raw_3m.jpg') else lhs_video
-    ref_img_r = 'rhs_raw_3m.jpg' if os.path.exists('rhs_raw_3m.jpg') else rhs_video
+    ref_img_l = 'lhs_raw_3m.jpg' if os.path.exists('lhs_raw_3m.jpg') else os.path.join("debug_artifacts", "frames", "lhs_raw_3m.jpg")
+    if not os.path.exists(ref_img_l):
+        ref_img_l = lhs_video
+
+    ref_img_r = 'rhs_raw_3m.jpg' if os.path.exists('rhs_raw_3m.jpg') else os.path.join("debug_artifacts", "frames", "rhs_raw_3m.jpg")
+    if not os.path.exists(ref_img_r):
+        ref_img_r = rhs_video
+
     maps = compute_calibration_maps(ref_img_l, ref_img_r)
 
     target_w = maps['target_w']
