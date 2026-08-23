@@ -219,21 +219,28 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
             target_cx = last_target_cx
             target_cw = last_target_cw
 
-        # ─── DUAL-FRAME DEADBAND STABILIZATION ─────────────────────────
-        # Inner safe deadband: ±15% of the outer tracking width
-        deadband_radius = (curr_cw * 0.15)
-        offset_from_center = target_cx - curr_cx
+        # ─── ULTRA-STABLE VELOCITY-DAMPED DEADBAND STABILIZATION ─────────
+        deadband_radius = (curr_cw * 0.18) # 18% deadband zone
+        dist_x = target_cx - curr_cx
 
-        if abs(offset_from_center) < deadband_radius:
-            # Inside inner safe frame -> hold camera steady (damping micro-jitters)
-            pan_force = 0.0
+        if abs(dist_x) < deadband_radius:
+            # Smooth cosine blend inside deadband
+            factor = 0.5 * (1.0 - np.cos(np.pi * (abs(dist_x) / deadband_radius)))
+            target_pull = dist_x * factor
         else:
-            # Action moved outside inner safe box -> gently pull camera
-            pan_force = offset_from_center - np.sign(offset_from_center) * deadband_radius
+            target_pull = dist_x - np.sign(dist_x) * deadband_radius
 
-        alpha = np.clip(smoothing, 0.01, 0.30)
-        curr_cx += pan_force * alpha
-        curr_cw = curr_cw * (1.0 - alpha * 0.5) + target_cw * (alpha * 0.5)
+        # Alpha smoothing based on user slider (default ~0.035)
+        alpha = np.clip(smoothing * 0.6, 0.01, 0.15)
+        vel_x = getattr(run_tracker_broadcast, '_vel_x', 0.0) * 0.78 + target_pull * alpha
+        
+        # Max velocity clamp (prevents camera jerk)
+        max_vel = 14.0 # max pixels per frame
+        vel_x = np.clip(vel_x, -max_vel, max_vel)
+        run_tracker_broadcast._vel_x = vel_x
+
+        curr_cx += vel_x
+        curr_cw = curr_cw * 0.96 + target_cw * 0.04
         curr_ch = curr_cw * 9.0 / 16.0
 
         # Clamp outer tracking frame

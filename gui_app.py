@@ -319,21 +319,34 @@ class ZentropyControlCenter(ctk.CTk):
         self.entry_coords.grid(row=3, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_in, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_coords)).grid(row=3, column=2, padx=15, pady=5)
 
+        # Time range
+        time_frame = ctk.CTkFrame(card_in, fg_color="transparent")
+        time_frame.grid(row=4, column=0, columnspan=3, sticky="w", padx=15, pady=5)
+        ctk.CTkLabel(time_frame, text="Start Time (HH:MM:SS):").pack(side="left", padx=(0, 5))
+        self.entry_track_start = ctk.CTkEntry(time_frame, width=90)
+        self.entry_track_start.insert(0, self.config_data.get("track_start", "00:00:00"))
+        self.entry_track_start.pack(side="left", padx=(0, 20))
+
+        ctk.CTkLabel(time_frame, text="Duration (sec, empty=Full):").pack(side="left", padx=(0, 5))
+        self.entry_track_dur = ctk.CTkEntry(time_frame, width=90)
+        self.entry_track_dur.insert(0, self.config_data.get("track_duration", ""))
+        self.entry_track_dur.pack(side="left", padx=(0, 20))
+
         # Broadcast Controls
-        ctk.CTkLabel(card_in, text="Camera Smoothing:").grid(row=4, column=0, sticky="w", padx=15, pady=5)
+        ctk.CTkLabel(card_in, text="Camera Smoothing:").grid(row=5, column=0, sticky="w", padx=15, pady=5)
         self.slider_smooth = ctk.CTkSlider(card_in, from_=0.02, to=0.15, number_of_steps=13)
         self.slider_smooth.set(self.config_data.get("smoothing", 0.06))
-        self.slider_smooth.grid(row=4, column=1, sticky="ew", padx=10, pady=5)
-        self.lbl_smooth_val = ctk.CTkLabel(card_in, text=f"Smooth ({self.slider_smooth.get():.2f})", width=90)
-        self.lbl_smooth_val.grid(row=4, column=2, padx=15, pady=5)
-        self.slider_smooth.configure(command=lambda v: self.lbl_smooth_val.configure(text=f"{'Cinematic' if v < 0.04 else 'Smooth' if v < 0.09 else 'Fast'} ({v:.2f})"))
+        self.slider_smooth.grid(row=5, column=1, sticky="ew", padx=10, pady=5)
+        self.lbl_smooth_val = ctk.CTkLabel(card_in, text=f"Ultra-Smooth ({self.slider_smooth.get():.2f})", width=110)
+        self.lbl_smooth_val.grid(row=5, column=2, padx=15, pady=5)
+        self.slider_smooth.configure(command=lambda v: self.lbl_smooth_val.configure(text=f"{'Cinematic' if v < 0.04 else 'Ultra-Smooth' if v < 0.09 else 'Fast'} ({v:.2f})"))
 
         # Output broadcast
-        ctk.CTkLabel(card_in, text="Broadcast Output (16:9):").grid(row=5, column=0, sticky="w", padx=15, pady=5)
+        ctk.CTkLabel(card_in, text="Broadcast Output (16:9):").grid(row=6, column=0, sticky="w", padx=15, pady=5)
         self.entry_broad_out = ctk.CTkEntry(card_in, width=450)
         self.entry_broad_out.insert(0, self.config_data.get("broadcast_output", "broadcast_16_9.mp4"))
-        self.entry_broad_out.grid(row=5, column=1, sticky="ew", padx=10, pady=5)
-        ctk.CTkButton(card_in, text="Save As...", width=90, command=lambda: self.browse_save_file(self.entry_broad_out)).grid(row=5, column=2, padx=15, pady=5)
+        self.entry_broad_out.grid(row=6, column=1, sticky="ew", padx=10, pady=5)
+        ctk.CTkButton(card_in, text="Save As...", width=90, command=lambda: self.browse_save_file(self.entry_broad_out)).grid(row=6, column=2, padx=15, pady=5)
 
         card_in.columnconfigure(1, weight=1)
 
@@ -430,12 +443,20 @@ class ZentropyControlCenter(ctk.CTk):
         self.entry_live_pano.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_src, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=1, column=2, padx=15, pady=5)
 
-        # Trajectory import for direct auto-pan & zoom replay
-        ctk.CTkLabel(card_src, text="Import Trajectory (.jsonl):").grid(row=2, column=0, sticky="w", padx=15, pady=5)
-        self.entry_live_coords = ctk.CTkEntry(card_src, width=450, placeholder_text="Optional: Select ball_trajectory_events.jsonl")
-        self.entry_live_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
-        self.entry_live_coords.grid(row=2, column=1, sticky="ew", padx=10, pady=5)
-        ctk.CTkButton(card_src, text="Load / Browse...", width=90, command=self.load_live_trajectory_file).grid(row=2, column=2, padx=15, pady=5)
+        # Start Time & Seek Bar
+        time_bar = ctk.CTkFrame(card_src, fg_color="transparent")
+        time_bar.grid(row=3, column=0, columnspan=3, sticky="ew", padx=15, pady=5)
+
+        ctk.CTkLabel(time_bar, text="Start Video From (HH:MM:SS):").pack(side="left", padx=(0, 5))
+        self.entry_live_start = ctk.CTkEntry(time_bar, width=90)
+        self.entry_live_start.insert(0, "00:00:00")
+        self.entry_live_start.pack(side="left", padx=(0, 15))
+
+        self.btn_seek_live = ctk.CTkButton(time_bar, text="⏩ Jump to Time", width=110, height=28, command=self.seek_live_start_time)
+        self.btn_seek_live.pack(side="left", padx=(0, 20))
+
+        self.lbl_live_time_display = ctk.CTkLabel(time_bar, text="Position: 00:00:00 (Frame 0)", font=ctk.CTkFont(size=12), text_color="#94a3b8")
+        self.lbl_live_time_display.pack(side="right")
 
         card_src.columnconfigure(1, weight=1)
 
@@ -640,14 +661,58 @@ class ZentropyControlCenter(ctk.CTk):
             t = threading.Thread(target=self.live_playback_loop, args=(pano_file,), daemon=True)
             t.start()
 
+    def parse_time_to_seconds(self, time_str):
+        if not time_str: return 0.0
+        parts = time_str.strip().split(":")
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+            else:
+                return float(parts[0])
+        except Exception:
+            return 0.0
+
+    def seek_live_start_time(self):
+        time_str = self.entry_live_start.get().strip()
+        secs = self.parse_time_to_seconds(time_str)
+        pano_file = self.entry_live_pano.get().strip()
+        if not os.path.exists(pano_file):
+            return
+
+        cap = cv2.VideoCapture(pano_file)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 29.97
+        target_frame = int(secs * fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+        ret, frame = cap.read()
+        cap.release()
+
+        if ret:
+            self.live_current_frame = frame
+            # Update trajectory position if available
+            if self.live_trajectory and target_frame in self.live_trajectory:
+                cx, cw = self.live_trajectory[target_frame]
+                self.live_ptz_x = cx / 3200.0
+                self.live_ptz_w = cw
+            self.render_live_studio_views()
+            self.lbl_live_time_display.configure(text=f"Position: {time_str} (Frame {target_frame})")
+            self.log_message(f"Jumped to video position {time_str} (Frame {target_frame})")
+
     def live_playback_loop(self, video_path):
         cap = cv2.VideoCapture(video_path)
-        frame_idx = 0
+        fps = cap.get(cv2.CAP_PROP_FPS) or 29.97
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 3200
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
 
+        # Seek to start time if specified
+        start_secs = self.parse_time_to_seconds(self.entry_live_start.get().strip())
+        frame_idx = int(start_secs * fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+
         curr_cx = self.live_ptz_x * w
         curr_cw = self.live_ptz_w
+        curr_vel_x = 0.0
 
         while self.live_playing and cap.isOpened():
             ret, frame = cap.read()
@@ -658,22 +723,44 @@ class ZentropyControlCenter(ctk.CTk):
             
             self.live_current_frame = frame
             
-            # Replay imported trajectory if enabled
+            # Replay imported trajectory if enabled with Ultra-Stable Damping
             if self.switch_auto_ptz.get():
                 if self.live_trajectory and frame_idx in self.live_trajectory:
                     target_cx, target_cw = self.live_trajectory[frame_idx]
-                    # Smooth inertia
-                    curr_cx = curr_cx * 0.90 + target_cx * 0.10
-                    curr_cw = curr_cw * 0.95 + target_cw * 0.05
+                    
+                    # Cosine Deadband Damping
+                    deadband = (curr_cw * 0.18)
+                    dist = target_cx - curr_cx
+                    if abs(dist) < deadband:
+                        factor = 0.5 * (1.0 - np.cos(np.pi * (abs(dist) / deadband)))
+                        pull = dist * factor
+                    else:
+                        pull = dist - np.sign(dist) * deadband
+
+                    # Velocity accumulation & clamp
+                    curr_vel_x = curr_vel_x * 0.78 + pull * 0.035
+                    curr_vel_x = np.clip(curr_vel_x, -14.0, 14.0)
+
+                    curr_cx += curr_vel_x
+                    curr_cw = curr_cw * 0.96 + target_cw * 0.04
+
                     self.live_ptz_x = np.clip(curr_cx / float(w), 0.15, 0.85)
                     self.live_ptz_w = np.clip(curr_cw, 1400, w)
                 else:
                     # Fallback auto sway
-                    t = time.time() * 0.5
-                    self.live_ptz_x = 0.5 + 0.25 * np.sin(t)
+                    t = time.time() * 0.4
+                    self.live_ptz_x = 0.5 + 0.20 * np.sin(t)
                     self.live_ptz_w = float(h * 16.0 / 9.0)
 
             self.render_live_studio_views()
+
+            # Update time display every 30 frames
+            if frame_idx % 30 == 0:
+                cur_sec = int(frame_idx / fps)
+                mins = cur_sec // 60
+                secs = cur_sec % 60
+                self.lbl_live_time_display.configure(text=f"Position: {mins:02d}:{secs:02d} (Frame {frame_idx})")
+
             frame_idx += 1
             time.sleep(0.033) # 30 fps
         cap.release()
@@ -788,6 +875,9 @@ class ZentropyControlCenter(ctk.CTk):
         out = self.entry_broad_out.get().strip()
         model = self.entry_model.get().strip()
         coords = self.entry_coords.get().strip() or None
+        st = self.entry_track_start.get().strip()
+        dur = self.entry_track_dur.get().strip()
+        dur_val = float(dur) if dur else None
         smooth = float(self.slider_smooth.get())
 
         if not os.path.exists(pano):
@@ -801,7 +891,7 @@ class ZentropyControlCenter(ctk.CTk):
         self.btn_abort_track.configure(state="normal")
         self.cancel_requested = False
 
-        self.log_message(f"Starting Tracking Broadcast: {pano} -> {out} (Source: {coords if coords else 'YOLO model: ' + model})")
+        self.log_message(f"Starting Tracking Broadcast: {pano} -> {out} (Start: {st}, Duration: {dur or 'Full'}, Source: {coords if coords else 'YOLO: ' + model})")
 
         def worker():
             from engines.tracker_engine import run_tracker_broadcast
@@ -811,7 +901,9 @@ class ZentropyControlCenter(ctk.CTk):
                     self.track_prog_bar.set(pct)
                     self.lbl_track_stats.configure(text=f"Tracked: {c}/{tot} ({pct*100:.1f}%) | Speed: {fps:.1f} FPS | ETA: {eta:.1f}s")
 
-                run_tracker_broadcast(pano, out, model_name=model, coordinates_file=coords, smoothing=smooth, progress_callback=cb, cancel_flag=lambda: self.cancel_requested)
+                run_tracker_broadcast(pano, out, model_name=model, coordinates_file=coords,
+                                      smoothing=smooth, start_time=st, duration=dur_val,
+                                      progress_callback=cb, cancel_flag=lambda: self.cancel_requested)
                 self.log_message(f"Broadcast 16:9 Video Complete! Saved to {out}")
                 self.set_status("COMPLETED", "#10b981")
                 self.load_preview_video(out)
