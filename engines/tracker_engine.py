@@ -1,15 +1,19 @@
-"""AI Tracking & Auto-Broadcast 16:9 Generator Engine.
+"""AI Ball & Player Tracking Engine for Zentropy 16:9 Broadcast Video Generation.
 
-Provides automated ball and player tracking with smooth virtual PTZ camera framing.
+Implements Dual-Frame Stabilization:
+- Outer Frame: 16:9 Tracking & Deadband Window.
+- Inner Frame: High-Stability Inset Broadcast Viewport.
 """
 
 import os
 import sys
+import json
 import time
 import argparse
 import subprocess
 import cv2
 import numpy as np
+from ultralytics import YOLO
 
 FFMPEG_BIN = r'C:\Users\yashs\ffmpeg-7.1-full_build-shared\bin\ffmpeg.exe'
 
@@ -31,7 +35,7 @@ def load_coordinates_from_jsonl(jsonl_path, pano_w=3200, pano_h=1080):
                 f_idx = ev.get("frame_index", ev.get("frame", None))
                 if f_idx is None: continue
 
-                # Reco pan_decision format (yaw in deg -> mapped to pano_w)
+                # pan_decision format (yaw in deg -> mapped to pano_w)
                 if ev.get("kind") == "pan_decision":
                     pose = ev.get("pose", {})
                     yaw = pose.get("yaw", 0.0) # degrees, -45 to +45
@@ -57,15 +61,13 @@ def load_coordinates_from_jsonl(jsonl_path, pano_w=3200, pano_h=1080):
 
 def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
                           coordinates_file=None,
+                          inner_crop_scale=0.85, # Inner broadcast frame ratio (0.85 = 15% outer deadband buffer)
                           smoothing=0.06, dynamic_zoom=True, zoom_sensitivity=0.5,
                           start_time=None, duration=None,
                           progress_callback=None, cancel_flag=None):
     """
-    Renders 16:9 Broadcast auto-tracked video from panoramic video.
-    smoothing: 0.02 (Cinematic) to 0.15 (Fast response)
+    Executes AI tracking and Dual-Frame stabilized 16:9 broadcast rendering.
     """
-    from ultralytics import YOLO
-
     cap = cv2.VideoCapture(pano_video)
     if not cap.isOpened():
         raise ValueError(f"Cannot open panoramic video: {pano_video}")
@@ -142,13 +144,13 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
     t0 = time.time()
     total_est = int(float(duration) * fps) if duration else total_frames
 
-    # Viewport state
+    # Viewport state (Outer Tracking Frame)
     curr_cx = pano_w / 2.0
     curr_cy = pano_h / 2.0
     curr_cw = float(base_crop_w)
     curr_ch = float(base_crop_h)
 
-    # Action history
+    # Action centroid history
     action_cx = curr_cx
 
     # Inference cadence: run YOLO every 2 frames for speed, interpolate in between
@@ -176,12 +178,8 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
             last_target_cx, last_target_cw = target_cx, target_cw
         elif count % detect_interval == 0 and model is not None:
             # Run YOLO detection
-            # Downscale frame for fast YOLO inference
             infer_frame = cv2.resize(frame, (1280, int(1280 * pano_h / pano_w)))
             results = model.predict(infer_frame, classes=[0, 32], conf=0.15, verbose=False, device=0)
-            
-            scale_x = pano_w / 1280.0
-            scale_y = pano_h / float(infer_frame.shape[0])
 
             ball_pos = None
             player_centers = []
@@ -190,20 +188,19 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
                 boxes = r.boxes
                 for box in boxes:
                     cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
                     xyxy = box.xyxy[0].cpu().numpy()
-                    cx = (xyxy[0] + xyxy[2]) / 2.0 * scale_x
-                    cy = (xyxy[1] + xyxy[3]) / 2.0 * scale_y
-                    
-                    if cls_id == 32: # sports ball
-                        ball_pos = (cx, cy)
-                    elif cls_id == 0: # person
-                        player_centers.append(cx)
+                    x_center = (xyxy[0] + xyxy[2]) / 2.0 * (pano_w / 1280.0)
 
-            # Determine focus target
+                    if cls_id == 32: # sports ball
+                        ball_pos = x_center
+                    elif cls_id == 0: # person
+                        player_centers.append(x_center)
+
+            # Determine primary focus
             if ball_pos is not None:
-                target_cx = ball_pos[0]
+                target_cx = ball_pos
             elif len(player_centers) > 0:
-                # Median or weighted center of players
                 target_cx = float(np.median(player_centers))
             else:
                 target_cx = curr_cx
@@ -222,19 +219,39 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
             target_cx = last_target_cx
             target_cw = last_target_cw
 
-        # Smooth camera movement with inertia / EMA
+        # ─── DUAL-FRAME DEADBAND STABILIZATION ─────────────────────────
+        # Inner safe deadband: ±15% of the outer tracking width
+        deadband_radius = (curr_cw * 0.15)
+        offset_from_center = target_cx - curr_cx
+
+        if abs(offset_from_center) < deadband_radius:
+            # Inside inner safe frame -> hold camera steady (damping micro-jitters)
+            pan_force = 0.0
+        else:
+            # Action moved outside inner safe box -> gently pull camera
+            pan_force = offset_from_center - np.sign(offset_from_center) * deadband_radius
+
         alpha = np.clip(smoothing, 0.01, 0.30)
-        curr_cx = curr_cx * (1.0 - alpha) + target_cx * alpha
+        curr_cx += pan_force * alpha
         curr_cw = curr_cw * (1.0 - alpha * 0.5) + target_cw * (alpha * 0.5)
         curr_ch = curr_cw * 9.0 / 16.0
 
-        # Viewport boundaries
-        x1 = int(np.clip(curr_cx - curr_cw / 2.0, 0, pano_w - curr_cw))
-        x2 = int(x1 + curr_cw)
-        y1 = int(np.clip(pano_h / 2.0 - curr_ch / 2.0, 0, pano_h - curr_ch))
-        y2 = int(y1 + curr_ch)
+        # Clamp outer tracking frame
+        outer_w = np.clip(curr_cw, min_crop_w, pano_w)
+        outer_h = outer_w * 9.0 / 16.0
+        outer_cx = np.clip(curr_cx, outer_w / 2.0, pano_w - outer_w / 2.0)
 
-        # Crop & resize to 1920x1080
+        # ─── INNER BROADCAST FRAME EXTRACTION ─────────────────────────
+        # Crop the smaller stabilized inner frame for high-quality broadcast output
+        inner_w = outer_w * inner_crop_scale
+        inner_h = inner_w * 9.0 / 16.0
+
+        x1 = int(np.clip(outer_cx - inner_w / 2.0, 0, pano_w - inner_w))
+        x2 = int(x1 + inner_w)
+        y1 = int(np.clip(pano_h / 2.0 - inner_h / 2.0, 0, pano_h - inner_h))
+        y2 = int(y1 + inner_h)
+
+        # Crop & upscale stabilized inner frame to 1920x1080
         crop_frame = frame[y1:y2, x1:x2]
         broadcast_frame = cv2.resize(crop_frame, (out_w, out_h), interpolation=cv2.INTER_LANCZOS4)
 
@@ -260,11 +277,12 @@ def run_tracker_broadcast(pano_video, output_video, model_name="yolov8n.pt",
     return output_video
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='AI Tracking & Broadcast Generator')
+    parser = argparse.ArgumentParser(description='Zentropy Dual-Frame Stabilized AI Tracking Broadcast Generator')
     parser.add_argument('--input', default='stitched_panorama_full.mp4', help='Input panoramic video')
     parser.add_argument('--output', default='broadcast_16_9.mp4', help='Output broadcast video')
     parser.add_argument('--model', default='yolov8n.pt', help='YOLO model weights')
     parser.add_argument('--smooth', default=0.06, type=float, help='Smoothing factor (0.02 to 0.15)')
+    parser.add_argument('--inner_scale', default=0.85, type=float, help='Inner broadcast frame scale (e.g. 0.85)')
     parser.add_argument('--start', default=None, help='Start time (HH:MM:SS)')
     parser.add_argument('--duration', default=None, type=float, help='Duration in seconds')
     args = parser.parse_args()
@@ -274,5 +292,7 @@ if __name__ == '__main__':
         print(f"[{pct:5.1f}%] {c}/{tot} frames | {fps:4.1f} FPS | Elapsed: {elapsed:5.1f}s | ETA: {eta:5.1f}s")
         sys.stdout.flush()
 
-    run_tracker_broadcast(args.input, args.output, model_name=args.model, smoothing=args.smooth,
-                          start_time=args.start, duration=args.duration, progress_callback=print_progress)
+    run_tracker_broadcast(args.input, args.output, model_name=args.model,
+                          inner_crop_scale=args.inner_scale, smoothing=args.smooth,
+                          start_time=args.start, duration=args.duration,
+                          progress_callback=print_progress)

@@ -558,28 +558,49 @@ class ZentropyControlCenter(ctk.CTk):
         self.ptz_canvas.delete("all")
         self.ptz_canvas.create_image(0, 0, anchor="nw", image=self.ptz_photo)
 
-        crop_w = float(self.live_ptz_w)
-        crop_h = crop_w * 9.0 / 16.0
-        if crop_w > w:
-            crop_w = float(w)
-            crop_h = crop_w * 9.0 / 16.0
+        # Outer Tracking Window
+        outer_crop_w = float(self.live_ptz_w)
+        outer_crop_h = outer_crop_w * 9.0 / 16.0
+        if outer_crop_w > w:
+            outer_crop_w = float(w)
+            outer_crop_h = outer_crop_w * 9.0 / 16.0
 
-        box_w = int(cw * (crop_w / float(w)))
-        box_h = int(ch * (crop_h / float(h)))
+        outer_box_w = int(cw * (outer_crop_w / float(w)))
+        outer_box_h = int(ch * (outer_crop_h / float(h)))
         center_x = int(self.live_ptz_x * cw)
-        x1 = max(5, min(cw - box_w - 5, center_x - box_w // 2))
-        x2 = x1 + box_w
-        y1 = max(5, (ch - box_h) // 2)
-        y2 = y1 + box_h
+        
+        ox1 = max(5, min(cw - outer_box_w - 5, center_x - outer_box_w // 2))
+        ox2 = ox1 + outer_box_w
+        oy1 = max(4, (ch - outer_box_h) // 2)
+        oy2 = oy1 + outer_box_h
 
-        self.ptz_canvas.create_rectangle(x1, y1, x2, y2, outline="#10b981", width=3)
-        self.ptz_canvas.create_text((x1 + x2)//2, y1 + 14, text="16:9 BROADCAST VIEWPORT", fill="#10b981", font=("Segoe UI", 10, "bold"))
+        # Draw Outer Tracking Frame (Cyan)
+        self.ptz_canvas.create_rectangle(ox1, oy1, ox2, oy2, outline="#38bdf8", width=1, dash=(4, 4))
+        self.ptz_canvas.create_text(ox1 + 10, oy1 + 10, anchor="nw", text="TRACKING DEADBAND (16:9)", fill="#38bdf8", font=("Segoe UI", 9, "bold"))
+
+        # Inner Broadcast Viewport (85% scale - Stabilized Output)
+        inner_scale = 0.85
+        inner_box_w = int(outer_box_w * inner_scale)
+        inner_box_h = int(outer_box_h * inner_scale)
+        
+        ix1 = ox1 + (outer_box_w - inner_box_w) // 2
+        ix2 = ix1 + inner_box_w
+        iy1 = oy1 + (outer_box_h - inner_box_h) // 2
+        iy2 = iy1 + inner_box_h
+
+        # Draw Inner Broadcast Frame (Emerald Green)
+        self.ptz_canvas.create_rectangle(ix1, iy1, ix2, iy2, outline="#10b981", width=3)
+        self.ptz_canvas.create_text((ix1 + ix2)//2, iy1 + 14, text="★ 16:9 STABILIZED BROADCAST", fill="#10b981", font=("Segoe UI", 10, "bold"))
+
+        # Extract the inner stabilized broadcast crop
+        inner_crop_w = outer_crop_w * inner_scale
+        inner_crop_h = inner_crop_w * 9.0 / 16.0
 
         actual_cx = int(self.live_ptz_x * w)
-        cx1 = int(max(0, min(w - crop_w, actual_cx - crop_w // 2)))
-        cx2 = int(cx1 + crop_w)
-        cy1 = int(max(0, (h - crop_h) // 2))
-        cy2 = int(cy1 + crop_h)
+        cx1 = int(max(0, min(w - inner_crop_w, actual_cx - inner_crop_w // 2)))
+        cx2 = int(cx1 + inner_crop_w)
+        cy1 = int(max(0, (h - inner_crop_h) // 2))
+        cy2 = int(cy1 + inner_crop_h)
 
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
