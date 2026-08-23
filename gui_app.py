@@ -1,4 +1,4 @@
-"""Zentropy Master AI Broadcast Studio & Pipeline Control Center.
+"""Zentropy Master AI Sports Broadcast Studio & Pipeline Control Center.
 
 Professional Desktop Suite for Panoramic Stitching, AI Tracking, and Live Virtual PTZ Broadcast.
 Designed with eye-tracking heatmap visual hierarchy (Master Control Room layout).
@@ -61,15 +61,31 @@ def parse_trajectory_file(file_path, pano_w=3200, pano_h=1080):
                             fov = pose.get("fov_degrees", 55.0)
                             cx = (yaw / 90.0 + 0.5) * pano_w
                             cw = (fov / 90.0) * pano_w
-                            trajectories[int(f_idx)] = (float(cx), float(cw))
+                            b = ev.get("ball", None)
+                            trajectories[int(f_idx)] = {
+                                "cx": float(cx),
+                                "cw": float(cw),
+                                "ball": b,
+                                "players": ev.get("active_players_count", 10)
+                            }
                         elif "ball" in ev and ev["ball"]:
                             b = ev["ball"]
                             bx = b.get("x", b.get("yaw", None))
                             if bx is not None:
                                 cx = (bx / 90.0 + 0.5) * pano_w if abs(bx) <= 90 else float(bx)
-                                trajectories[int(f_idx)] = (cx, float(pano_h * 16.0 / 9.0))
+                                trajectories[int(f_idx)] = {
+                                    "cx": cx,
+                                    "cw": float(pano_h * 16.0 / 9.0),
+                                    "ball": b,
+                                    "players": 10
+                                }
                         elif "cx" in ev:
-                            trajectories[int(f_idx)] = (float(ev["cx"]), float(ev.get("cw", pano_h * 16.0 / 9.0)))
+                            trajectories[int(f_idx)] = {
+                                "cx": float(ev["cx"]),
+                                "cw": float(ev.get("cw", pano_h * 16.0 / 9.0)),
+                                "ball": ev.get("ball", None),
+                                "players": ev.get("players", 10)
+                            }
                     except Exception:
                         continue
         elif file_path.endswith('.json'):
@@ -85,15 +101,30 @@ def parse_trajectory_file(file_path, pano_w=3200, pano_h=1080):
                             fov = pose.get("fov_degrees", 55.0)
                             cx = (yaw / 90.0 + 0.5) * pano_w
                             cw = (fov / 90.0) * pano_w
-                            trajectories[int(f_idx)] = (float(cx), float(cw))
+                            trajectories[int(f_idx)] = {
+                                "cx": float(cx),
+                                "cw": float(cw),
+                                "ball": ev.get("ball", None),
+                                "players": ev.get("active_players_count", 10)
+                            }
                         elif "ball" in ev and ev["ball"]:
                             b = ev["ball"]
                             bx = b.get("x", b.get("yaw", None))
                             if bx is not None:
                                 cx = (bx / 90.0 + 0.5) * pano_w if abs(bx) <= 90 else float(bx)
-                                trajectories[int(f_idx)] = (cx, float(pano_h * 16.0 / 9.0))
+                                trajectories[int(f_idx)] = {
+                                    "cx": cx,
+                                    "cw": float(pano_h * 16.0 / 9.0),
+                                    "ball": b,
+                                    "players": 10
+                                }
                         elif "cx" in ev:
-                            trajectories[int(f_idx)] = (float(ev["cx"]), float(ev.get("cw", pano_h * 16.0 / 9.0)))
+                            trajectories[int(f_idx)] = {
+                                "cx": float(ev["cx"]),
+                                "cw": float(ev.get("cw", pano_h * 16.0 / 9.0)),
+                                "ball": ev.get("ball", None),
+                                "players": ev.get("players", 10)
+                            }
     except Exception as e:
         print(f"Error parsing trajectory file {file_path}: {e}")
     return trajectories
@@ -103,9 +134,9 @@ class ZentropyControlCenter(ctk.CTk):
         super().__init__()
 
         self.title("Zentropy AI Sports Broadcast Studio - Control Center")
-        self.geometry("1400x950")
-        self.minsize(1200, 820)
-        self.configure(fg_color="#0b0f19")
+        self.geometry("1440x980")
+        self.minsize(1240, 840)
+        self.configure(fg_color="#090d16")
 
         self.config_data = self.load_config()
         self.current_worker = None
@@ -124,7 +155,9 @@ class ZentropyControlCenter(ctk.CTk):
         self.live_current_frame = None
         self.live_trajectory = {}
         self.live_yaw_deg = 0.0
-        self.live_fps_metric = 29.97
+        self.live_current_ball = None
+        self.live_ball_speed = 0.0
+        self.live_active_players = 12
 
         self.create_layout()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -148,12 +181,12 @@ class ZentropyControlCenter(ctk.CTk):
 
     def create_layout(self):
         # 1. Top Masthead & Telemetry Bar (High Visual Heat Top Left/Right)
-        self.header_frame = ctk.CTkFrame(self, height=56, corner_radius=0, fg_color="#0e1424")
+        self.header_frame = ctk.CTkFrame(self, height=54, corner_radius=0, fg_color="#0d1322", border_width=1, border_color="#18233c")
         self.header_frame.pack(fill="x", side="top")
 
         # Brand / Title
         brand_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        brand_box.pack(side="left", padx=16, pady=10)
+        brand_box.pack(side="left", padx=16, pady=8)
 
         ctk.CTkLabel(
             brand_box, 
@@ -164,23 +197,23 @@ class ZentropyControlCenter(ctk.CTk):
 
         ctk.CTkLabel(
             brand_box, 
-            text="AI BROADCAST STUDIO", 
+            text="PRO AI BROADCAST STUDIO", 
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             text_color="#94a3b8"
         ).pack(side="left")
 
         # Top Center Live Telemetry Pill
-        self.pill_telemetry = ctk.CTkFrame(self.header_frame, height=32, corner_radius=16, fg_color="#151e33")
-        self.pill_telemetry.pack(side="left", padx=30, pady=12)
+        self.pill_telemetry = ctk.CTkFrame(self.header_frame, height=30, corner_radius=15, fg_color="#131c31")
+        self.pill_telemetry.pack(side="left", padx=25, pady=11)
 
-        self.lbl_tele_res = ctk.CTkLabel(self.pill_telemetry, text="3200×1080 FIELD", font=ctk.CTkFont(size=11, weight="bold"), text_color="#38bdf8")
-        self.lbl_tele_res.pack(side="left", padx=(14, 10))
+        self.lbl_tele_res = ctk.CTkLabel(self.pill_telemetry, text="3200×1080 MASTER PANO", font=ctk.CTkFont(size=11, weight="bold"), text_color="#38bdf8")
+        self.lbl_tele_res.pack(side="left", padx=(12, 8))
 
-        self.lbl_tele_fps = ctk.CTkLabel(self.pill_telemetry, text="● 29.97 FPS", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981")
-        self.lbl_tele_fps.pack(side="left", padx=(0, 10))
+        self.lbl_tele_fps = ctk.CTkLabel(self.pill_telemetry, text="● 29.97 FPS (NVENC)", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981")
+        self.lbl_tele_fps.pack(side="left", padx=(0, 8))
 
-        self.lbl_tele_mode = ctk.CTkLabel(self.pill_telemetry, text="VIRTUAL PTZ: ACTIVE", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f59e0b")
-        self.lbl_tele_mode.pack(side="left", padx=(0, 14))
+        self.lbl_tele_mode = ctk.CTkLabel(self.pill_telemetry, text="AI AUTO-PTZ: PRO GRADE", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f59e0b")
+        self.lbl_tele_mode.pack(side="left", padx=(0, 12))
 
         # Right Status Badge
         self.status_badge = ctk.CTkLabel(
@@ -188,12 +221,12 @@ class ZentropyControlCenter(ctk.CTk):
             text="● SYSTEM READY",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#10b981",
-            fg_color="#151e33",
+            fg_color="#131c31",
             corner_radius=12,
             padx=14,
             pady=5
         )
-        self.status_badge.pack(side="right", padx=16, pady=12)
+        self.status_badge.pack(side="right", padx=16, pady=11)
 
         # 2. Bottom Collapsible Log Console (Built first so logging is available)
         self.build_log_console()
@@ -202,15 +235,15 @@ class ZentropyControlCenter(ctk.CTk):
         self.tabview = ctk.CTkTabview(
             self,
             corner_radius=10,
-            fg_color="#0b0f19",
-            segmented_button_fg_color="#151e33",
+            fg_color="#090d16",
+            segmented_button_fg_color="#131c31",
             segmented_button_selected_color="#10b981",
             segmented_button_selected_hover_color="#059669",
-            segmented_button_unselected_color="#151e33",
-            segmented_button_unselected_hover_color="#1e293b",
+            segmented_button_unselected_color="#131c31",
+            segmented_button_unselected_hover_color="#1c2844",
             text_color="#f8fafc"
         )
-        self.tabview.pack(fill="both", expand=True, padx=14, pady=(2, 6))
+        self.tabview.pack(fill="both", expand=True, padx=12, pady=(2, 6))
 
         self.tab_ptz = self.tabview.add(" 📡 LIVE BROADCAST STUDIO (MASTER PTZ) ")
         self.tab_track = self.tabview.add(" 🎯 AI TRACKING & AUTO-CAM ")
@@ -225,8 +258,8 @@ class ZentropyControlCenter(ctk.CTk):
         container = ctk.CTkFrame(self.tab_ptz, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=4, pady=4)
 
-        # TOP ROW: Full Field Panorama ($3200 \times 1080$) Canvas with Dual-Frame Overlays
-        pano_card = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        # TOP ROW: Full Field Panorama ($3200 \times 1080$) Canvas (PRO-SCALE 240px HEIGHT)
+        pano_card = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         pano_card.pack(fill="x", padx=4, pady=(0, 6))
 
         top_header = ctk.CTkFrame(pano_card, height=28, fg_color="transparent")
@@ -234,7 +267,7 @@ class ZentropyControlCenter(ctk.CTk):
 
         ctk.CTkLabel(
             top_header, 
-            text="1. FULL FIELD PANORAMA (3200×1080) — DRAG CANVAS TO PAN", 
+            text="1. FULL FIELD PANORAMA (3200×1080) — INTERACTIVE VIRTUAL PTZ CANVAS", 
             font=ctk.CTkFont(size=12, weight="bold"), 
             text_color="#38bdf8"
         ).pack(side="left")
@@ -244,27 +277,29 @@ class ZentropyControlCenter(ctk.CTk):
         legend_box.pack(side="right")
 
         ctk.CTkLabel(legend_box, text="🟦 Tracking Deadband", font=ctk.CTkFont(size=11), text_color="#38bdf8").pack(side="left", padx=8)
-        ctk.CTkLabel(legend_box, text="🟩 16:9 Stabilized Broadcast", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981").pack(side="left", padx=8)
+        ctk.CTkLabel(legend_box, text="🟩 16:9 Broadcast Program", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981").pack(side="left", padx=8)
+        ctk.CTkLabel(legend_box, text="⚽ Ball Lock", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f59e0b").pack(side="left", padx=8)
 
-        self.ptz_canvas = tk.Canvas(pano_card, height=175, bg="#070a12", highlightthickness=0)
+        # Large, Crisp 240px Canvas
+        self.ptz_canvas = tk.Canvas(pano_card, height=240, bg="#05070e", highlightthickness=0)
         self.ptz_canvas.pack(fill="x", padx=10, pady=(2, 8))
         self.ptz_canvas.bind("<B1-Motion>", self.on_ptz_drag)
         self.ptz_canvas.bind("<Button-1>", self.on_ptz_drag)
 
-        # BOTTOM SPLIT: 65% Main Broadcast Monitor | 35% Control & Telemetry Deck
+        # BOTTOM SPLIT: 62% Main Broadcast Monitor | 38% Pro Tactical & Control Deck
         bottom_split = ctk.CTkFrame(container, fg_color="transparent")
         bottom_split.pack(fill="both", expand=True, padx=0, pady=0)
 
         # LEFT COLUMN (Main Broadcast Monitor Stage)
-        left_monitor_card = ctk.CTkFrame(bottom_split, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        left_monitor_card = ctk.CTkFrame(bottom_split, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         left_monitor_card.pack(side="left", fill="both", expand=True, padx=(4, 6), pady=0)
 
         mon_bar = ctk.CTkFrame(left_monitor_card, height=28, fg_color="transparent")
-        mon_bar.pack(fill="x", padx=12, pady=(8, 2))
+        mon_bar.pack(fill="x", padx=12, pady=(6, 2))
 
         ctk.CTkLabel(
             mon_bar, 
-            text="2. LIVE PROGRAM BROADCAST FEED (16:9 1080p ULTRA-STABILIZED)", 
+            text="2. LIVE PROGRAM BROADCAST (16:9 1080p ULTRA-STABILIZED)", 
             font=ctk.CTkFont(size=12, weight="bold"), 
             text_color="#10b981"
         ).pack(side="left")
@@ -284,15 +319,15 @@ class ZentropyControlCenter(ctk.CTk):
         # 16:9 Viewport Display
         self.lbl_live_16_9 = ctk.CTkLabel(
             left_monitor_card, 
-            text="Live Broadcast Feed", 
-            fg_color="#070a12", 
+            text="Live Broadcast Program Feed", 
+            fg_color="#05070e", 
             corner_radius=6
         )
         self.lbl_live_16_9.pack(fill="both", expand=True, padx=10, pady=(2, 6))
 
         # Monitor Bottom Status Row
         mon_footer = ctk.CTkFrame(left_monitor_card, fg_color="transparent")
-        mon_footer.pack(fill="x", padx=10, pady=(2, 8))
+        mon_footer.pack(fill="x", padx=10, pady=(2, 6))
 
         self.lbl_live_time_display = ctk.CTkLabel(
             mon_footer, 
@@ -304,25 +339,23 @@ class ZentropyControlCenter(ctk.CTk):
 
         self.lbl_live_telemetry_hud = ctk.CTkLabel(
             mon_footer,
-            text="PAN: 0.0° | ZOOM: 1.0x | DEADBAND: 18%",
+            text="PAN: 0.0° | ZOOM: 1.0x | DEADBAND: 18% | OUT: 1080p60",
             font=ctk.CTkFont(family="Consolas", size=11),
             text_color="#38bdf8"
         )
         self.lbl_live_telemetry_hud.pack(side="right")
 
-        # RIGHT COLUMN: Control, Preset Switcher & Stream Server Desk (Heatmap Right Focus)
-        right_ctrl_card = ctk.CTkFrame(bottom_split, width=460, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        # RIGHT COLUMN: Tactical Telemetry & Control Deck
+        right_ctrl_card = ctk.CTkFrame(bottom_split, width=470, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         right_ctrl_card.pack(side="right", fill="both", padx=(0, 4), pady=0)
         right_ctrl_card.pack_propagate(False)
 
-        # Section 1: Playback & Action Controls
+        # Section 1: Primary Broadcast Actions & Seeking
         sec1 = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
-        sec1.pack(fill="x", padx=12, pady=(10, 6))
-
-        ctk.CTkLabel(sec1, text="BROADCAST PLAYBACK CONTROL", font=ctk.CTkFont(size=11, weight="bold"), text_color="#64748b").pack(anchor="w")
+        sec1.pack(fill="x", padx=12, pady=(8, 4))
 
         btn_row = ctk.CTkFrame(sec1, fg_color="transparent")
-        btn_row.pack(fill="x", pady=(6, 2))
+        btn_row.pack(fill="x", pady=(2, 2))
 
         self.btn_live_play = ctk.CTkButton(
             btn_row,
@@ -330,7 +363,7 @@ class ZentropyControlCenter(ctk.CTk):
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#10b981",
             hover_color="#059669",
-            height=38,
+            height=36,
             command=self.toggle_live_playback
         )
         self.btn_live_play.pack(side="left", fill="x", expand=True, padx=(0, 6))
@@ -344,23 +377,23 @@ class ZentropyControlCenter(ctk.CTk):
         self.switch_auto_ptz.select()
         self.switch_auto_ptz.pack(side="right")
 
-        # Section 2: Time Seeking & Positioning
-        sec_time = ctk.CTkFrame(right_ctrl_card, fg_color="#0c1220", corner_radius=6)
-        sec_time.pack(fill="x", padx=12, pady=4)
+        # Start / Seek Bar
+        time_inner = ctk.CTkFrame(sec1, fg_color="#0a0f1d", corner_radius=6)
+        time_inner.pack(fill="x", pady=(6, 2))
 
-        time_inner = ctk.CTkFrame(sec_time, fg_color="transparent")
-        time_inner.pack(fill="x", padx=8, pady=6)
+        time_box = ctk.CTkFrame(time_inner, fg_color="transparent")
+        time_box.pack(fill="x", padx=8, pady=4)
 
-        ctk.CTkLabel(time_inner, text="Start / Seek (HH:MM:SS):", font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 6))
-        self.entry_live_start = ctk.CTkEntry(time_inner, width=80, height=28, font=ctk.CTkFont(family="Consolas", size=12))
+        ctk.CTkLabel(time_box, text="Seek (HH:MM:SS):", font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 6))
+        self.entry_live_start = ctk.CTkEntry(time_box, width=75, height=26, font=ctk.CTkFont(family="Consolas", size=11))
         self.entry_live_start.insert(0, "00:00:00")
-        self.entry_live_start.pack(side="left", padx=(0, 8))
+        self.entry_live_start.pack(side="left", padx=(0, 6))
 
         self.btn_seek_live = ctk.CTkButton(
-            time_inner, 
+            time_box, 
             text="⏩ Jump", 
-            width=70, 
-            height=28, 
+            width=65, 
+            height=26, 
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#3b82f6",
             hover_color="#2563eb",
@@ -368,73 +401,97 @@ class ZentropyControlCenter(ctk.CTk):
         )
         self.btn_seek_live.pack(side="left")
 
-        # Section 3: Camera Hotspot Switcher Grid (Broadcast Desk)
-        sec2 = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
-        sec2.pack(fill="x", padx=12, pady=6)
+        # Section 2: Pro Tactical Analytics Panel (AI Metrics)
+        sec_tactical = ctk.CTkFrame(right_ctrl_card, fg_color="#0a0f1d", corner_radius=6, border_width=1, border_color="#1a253e")
+        sec_tactical.pack(fill="x", padx=12, pady=4)
 
-        ctk.CTkLabel(sec2, text="CAMERA HOTSPOT PRESETS (INSTANT PAN)", font=ctk.CTkFont(size=11, weight="bold"), text_color="#64748b").pack(anchor="w")
+        tac_head = ctk.CTkFrame(sec_tactical, fg_color="transparent")
+        tac_head.pack(fill="x", padx=8, pady=(4, 2))
+        ctk.CTkLabel(tac_head, text="⚡ PRO AI TACTICAL TELEMETRY", font=ctk.CTkFont(size=10, weight="bold"), text_color="#f59e0b").pack(side="left")
+        ctk.CTkLabel(tac_head, text="REAL-TIME", font=ctk.CTkFont(size=9, weight="bold"), text_color="#10b981").pack(side="right")
+
+        tac_grid = ctk.CTkFrame(sec_tactical, fg_color="transparent")
+        tac_grid.pack(fill="x", padx=8, pady=(0, 6))
+
+        self.lbl_tac_zone = ctk.CTkLabel(tac_grid, text="Zone: Midfield", font=ctk.CTkFont(size=11), text_color="#e2e8f0")
+        self.lbl_tac_zone.grid(row=0, column=0, sticky="w", pady=1)
+
+        self.lbl_tac_speed = ctk.CTkLabel(tac_grid, text="Ball Est: 28 km/h", font=ctk.CTkFont(size=11), text_color="#38bdf8")
+        self.lbl_tac_speed.grid(row=0, column=1, sticky="w", padx=10, pady=1)
+
+        self.lbl_tac_players = ctk.CTkLabel(tac_grid, text="Players: 12 Detected", font=ctk.CTkFont(size=11), text_color="#e2e8f0")
+        self.lbl_tac_players.grid(row=1, column=0, sticky="w", pady=1)
+
+        self.lbl_tac_stability = ctk.CTkLabel(tac_grid, text="Stability: 99.4%", font=ctk.CTkFont(size=11), text_color="#10b981")
+        self.lbl_tac_stability.grid(row=1, column=1, sticky="w", padx=10, pady=1)
+
+        # Section 3: Hotspot Switcher Grid (Broadcast Switcher Desk)
+        sec2 = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
+        sec2.pack(fill="x", padx=12, pady=4)
+
+        ctk.CTkLabel(sec2, text="CAMERA HOTSPOT PRESETS (INSTANT PAN)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(anchor="w")
 
         grid_frame = ctk.CTkFrame(sec2, fg_color="transparent")
-        grid_frame.pack(fill="x", pady=4)
+        grid_frame.pack(fill="x", pady=2)
 
-        ctk.CTkButton(grid_frame, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#1e293b", hover_color="#334155", height=32, command=lambda: self.set_ptz_pos(0.15)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="⚽ Center Field", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#1e293b", hover_color="#334155", height=32, command=lambda: self.set_ptz_pos(0.50)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#1e293b", hover_color="#334155", height=32, command=lambda: self.set_ptz_pos(0.85)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.15)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="⚽ Midfield", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.50)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.85)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
 
-        ctk.CTkButton(grid_frame, text="Left Box", font=ctk.CTkFont(size=11), fg_color="#151e33", hover_color="#243354", height=28, command=lambda: self.set_ptz_pos(0.28)).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Mid Action", font=ctk.CTkFont(size=11), fg_color="#151e33", hover_color="#243354", height=28, command=lambda: self.set_ptz_pos(0.50)).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Right Box", font=ctk.CTkFont(size=11), fg_color="#151e33", hover_color="#243354", height=28, command=lambda: self.set_ptz_pos(0.72)).grid(row=1, column=2, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="Left Box", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.28)).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="Mid Action", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.50)).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
+        ctk.CTkButton(grid_frame, text="Right Box", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.72)).grid(row=1, column=2, sticky="ew", padx=2, pady=2)
 
         grid_frame.columnconfigure((0, 1, 2), weight=1)
 
-        # Section 4: Source & Trajectory Pickers
-        sec3 = ctk.CTkFrame(right_ctrl_card, fg_color="#0c1220", corner_radius=6)
-        sec3.pack(fill="x", padx=12, pady=6)
+        # Section 4: Source Video & Trajectory File Pickers
+        sec3 = ctk.CTkFrame(right_ctrl_card, fg_color="#0a0f1d", corner_radius=6)
+        sec3.pack(fill="x", padx=12, pady=4)
 
         s3_inner = ctk.CTkFrame(sec3, fg_color="transparent")
-        s3_inner.pack(fill="x", padx=8, pady=6)
+        s3_inner.pack(fill="x", padx=8, pady=4)
 
-        ctk.CTkLabel(s3_inner, text="Source Video:", font=ctk.CTkFont(size=11)).grid(row=0, column=0, sticky="w", pady=2)
-        self.entry_live_pano = ctk.CTkEntry(s3_inner, height=26, font=ctk.CTkFont(size=11))
+        ctk.CTkLabel(s3_inner, text="Pano Video:", font=ctk.CTkFont(size=10)).grid(row=0, column=0, sticky="w", pady=1)
+        self.entry_live_pano = ctk.CTkEntry(s3_inner, height=24, font=ctk.CTkFont(size=10))
         self.entry_live_pano.insert(0, self.config_data.get("live_pano_source", "stitched_panorama_full.mp4"))
-        self.entry_live_pano.grid(row=0, column=1, sticky="ew", padx=6, pady=2)
-        ctk.CTkButton(s3_inner, text="...", width=28, height=26, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=0, column=2, pady=2)
+        self.entry_live_pano.grid(row=0, column=1, sticky="ew", padx=4, pady=1)
+        ctk.CTkButton(s3_inner, text="...", width=24, height=24, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=0, column=2, pady=1)
 
-        ctk.CTkLabel(s3_inner, text="Trajectory (.jsonl):", font=ctk.CTkFont(size=11)).grid(row=1, column=0, sticky="w", pady=2)
-        self.entry_live_coords = ctk.CTkEntry(s3_inner, height=26, font=ctk.CTkFont(size=11))
+        ctk.CTkLabel(s3_inner, text="Trajectory:", font=ctk.CTkFont(size=10)).grid(row=1, column=0, sticky="w", pady=1)
+        self.entry_live_coords = ctk.CTkEntry(s3_inner, height=24, font=ctk.CTkFont(size=10))
         self.entry_live_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
-        self.entry_live_coords.grid(row=1, column=1, sticky="ew", padx=6, pady=2)
-        ctk.CTkButton(s3_inner, text="...", width=28, height=26, command=self.load_live_trajectory_file).grid(row=1, column=2, pady=2)
+        self.entry_live_coords.grid(row=1, column=1, sticky="ew", padx=4, pady=1)
+        ctk.CTkButton(s3_inner, text="...", width=24, height=24, command=self.load_live_trajectory_file).grid(row=1, column=2, pady=1)
 
         s3_inner.columnconfigure(1, weight=1)
 
         # Section 5: Local Wi-Fi Mobile Streaming Server
-        sec4 = ctk.CTkFrame(right_ctrl_card, fg_color="#10231e", corner_radius=6, border_width=1, border_color="#10b981")
-        sec4.pack(fill="x", padx=12, pady=(6, 10))
+        sec4 = ctk.CTkFrame(right_ctrl_card, fg_color="#0d1e1a", corner_radius=6, border_width=1, border_color="#10b981")
+        sec4.pack(fill="x", padx=12, pady=(4, 8))
 
         s4_inner = ctk.CTkFrame(sec4, fg_color="transparent")
-        s4_inner.pack(fill="x", padx=10, pady=8)
+        s4_inner.pack(fill="x", padx=8, pady=6)
 
-        ctk.CTkLabel(s4_inner, text="📡 LOCAL WI-FI STREAM SERVER", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981").pack(anchor="w")
+        ctk.CTkLabel(s4_inner, text="📡 LOCAL WI-FI STREAM SERVER", font=ctk.CTkFont(size=10, weight="bold"), text_color="#10b981").pack(anchor="w")
 
         self.lbl_stream_url = ctk.CTkLabel(
             s4_inner,
             text="Endpoint: http://<LAN-IP>:8080 (OFF)",
-            font=ctk.CTkFont(family="Consolas", size=11),
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color="#94a3b8"
         )
-        self.lbl_stream_url.pack(anchor="w", pady=2)
+        self.lbl_stream_url.pack(anchor="w", pady=1)
 
         self.btn_toggle_stream = ctk.CTkButton(
             s4_inner,
             text="▶ START MOBILE STREAM SERVER",
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=10, weight="bold"),
             fg_color="#10b981",
             hover_color="#059669",
-            height=30,
+            height=26,
             command=self.toggle_stream_server
         )
-        self.btn_toggle_stream.pack(fill="x", pady=(4, 0))
+        self.btn_toggle_stream.pack(fill="x", pady=(2, 0))
 
         self.load_initial_live_frame()
         self.load_live_trajectory_file(silent=True)
@@ -444,7 +501,7 @@ class ZentropyControlCenter(ctk.CTk):
         container = ctk.CTkScrollableFrame(self.tab_track, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        card_in = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        card_in = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         card_in.pack(fill="x", pady=5, padx=5)
 
         lbl_sec = ctk.CTkLabel(card_in, text="SOURCE PANORAMA & AI TRACKING CONFIGURATION", font=ctk.CTkFont(size=14, weight="bold"), text_color="#38bdf8")
@@ -503,7 +560,7 @@ class ZentropyControlCenter(ctk.CTk):
         card_in.columnconfigure(1, weight=1)
 
         # Actions & Progress
-        card_act = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        card_act = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         card_act.pack(fill="x", pady=10, padx=5)
 
         btn_row = ctk.CTkFrame(card_act, fg_color="transparent")
@@ -563,11 +620,11 @@ class ZentropyControlCenter(ctk.CTk):
         self.lbl_track_stats.pack(anchor="w", padx=15, pady=(0, 10))
 
         # Video Player Preview
-        self.card_track_prev = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        self.card_track_prev = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         self.card_track_prev.pack(fill="both", expand=True, pady=5, padx=5)
         ctk.CTkLabel(self.card_track_prev, text="16:9 BROADCAST VIDEO PLAYER", font=ctk.CTkFont(size=13, weight="bold"), text_color="#94a3b8").pack(anchor="w", padx=15, pady=5)
         
-        self.lbl_track_img = ctk.CTkLabel(self.card_track_prev, text="No video loaded", height=240, fg_color="#070a12", corner_radius=6)
+        self.lbl_track_img = ctk.CTkLabel(self.card_track_prev, text="No video loaded", height=240, fg_color="#05070e", corner_radius=6)
         self.lbl_track_img.pack(fill="both", expand=True, padx=15, pady=(0, 5))
 
         ctrl_row = ctk.CTkFrame(self.card_track_prev, fg_color="transparent")
@@ -581,7 +638,7 @@ class ZentropyControlCenter(ctk.CTk):
         container = ctk.CTkScrollableFrame(self.tab_stitch, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        card_in = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        card_in = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         card_in.pack(fill="x", pady=5, padx=5)
 
         lbl_sec = ctk.CTkLabel(card_in, text="SOURCE CAMERA FEEDS (LHS + RHS)", font=ctk.CTkFont(size=14, weight="bold"), text_color="#38bdf8")
@@ -624,7 +681,7 @@ class ZentropyControlCenter(ctk.CTk):
         card_in.columnconfigure(1, weight=1)
 
         # Actions & Progress
-        card_act = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        card_act = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         card_act.pack(fill="x", pady=10, padx=5)
 
         btn_row = ctk.CTkFrame(card_act, fg_color="transparent")
@@ -662,11 +719,11 @@ class ZentropyControlCenter(ctk.CTk):
         self.lbl_stitch_stats.pack(anchor="w", padx=15, pady=(0, 10))
 
         # Preview card
-        self.card_stitch_prev = ctk.CTkFrame(container, corner_radius=8, fg_color="#131b2e", border_width=1, border_color="#1e293b")
+        self.card_stitch_prev = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         self.card_stitch_prev.pack(fill="both", expand=True, pady=5, padx=5)
         ctk.CTkLabel(self.card_stitch_prev, text="PANORAMA REFERENCE PREVIEW", font=ctk.CTkFont(size=13, weight="bold"), text_color="#94a3b8").pack(anchor="w", padx=15, pady=5)
         
-        self.lbl_pano_img = ctk.CTkLabel(self.card_stitch_prev, text="", height=180, fg_color="#070a12", corner_radius=6)
+        self.lbl_pano_img = ctk.CTkLabel(self.card_stitch_prev, text="", height=180, fg_color="#05070e", corner_radius=6)
         self.lbl_pano_img.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         self.load_static_pano_preview()
 
@@ -686,16 +743,16 @@ class ZentropyControlCenter(ctk.CTk):
 
     # ─── COLLAPSIBLE LOG CONSOLE ───────────────────────────────────────
     def build_log_console(self):
-        self.console_frame = ctk.CTkFrame(self, height=110, corner_radius=0, fg_color="#070a12", border_width=1, border_color="#151e33")
+        self.console_frame = ctk.CTkFrame(self, height=95, corner_radius=0, fg_color="#05070e", border_width=1, border_color="#131c31")
         self.console_frame.pack(fill="x", side="bottom")
 
-        bar = ctk.CTkFrame(self.console_frame, height=24, fg_color="#0e1424")
+        bar = ctk.CTkFrame(self.console_frame, height=22, fg_color="#0d1322")
         bar.pack(fill="x")
 
         ctk.CTkLabel(bar, text="💻 SYSTEM & TELEMETRY LOGS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(side="left", padx=12)
-        ctk.CTkButton(bar, text="Clear", width=45, height=18, font=ctk.CTkFont(size=10), fg_color="#1e293b", hover_color="#334155", command=self.clear_logs).pack(side="right", padx=8)
+        ctk.CTkButton(bar, text="Clear", width=40, height=16, font=ctk.CTkFont(size=9), fg_color="#18233c", hover_color="#273960", command=self.clear_logs).pack(side="right", padx=8)
 
-        self.log_text = ctk.CTkTextbox(self.console_frame, height=80, font=ctk.CTkFont(family="Consolas", size=10), fg_color="#070a12", text_color="#cbd5e1")
+        self.log_text = ctk.CTkTextbox(self.console_frame, height=70, font=ctk.CTkFont(family="Consolas", size=10), fg_color="#05070e", text_color="#cbd5e1")
         self.log_text.pack(fill="both", expand=True, padx=8, pady=(0, 4))
         self.log_message("Zentropy AI Sports Broadcast Control Center Initialized.")
 
@@ -756,8 +813,8 @@ class ZentropyControlCenter(ctk.CTk):
         h, w = frame.shape[:2]
 
         raw_cw = self.ptz_canvas.winfo_width()
-        cw = raw_cw if raw_cw > 50 else 1000
-        ch = 175
+        cw = raw_cw if raw_cw > 50 else 1050
+        ch = 240 # PRO-SCALE HEIGHT
         resized_pano = cv2.resize(frame, (cw, ch))
         rgb_pano = cv2.cvtColor(resized_pano, cv2.COLOR_BGR2RGB)
         self.ptz_photo = ImageTk.PhotoImage(Image.fromarray(rgb_pano))
@@ -765,7 +822,13 @@ class ZentropyControlCenter(ctk.CTk):
         self.ptz_canvas.delete("all")
         self.ptz_canvas.create_image(0, 0, anchor="nw", image=self.ptz_photo)
 
-        # 1. Outer Tracking Deadband Frame (Cyan)
+        # 1. Pitch Zone Guide Dividers
+        z1_x = int(cw * 0.33)
+        z2_x = int(cw * 0.66)
+        self.ptz_canvas.create_line(z1_x, 0, z1_x, ch, fill="#1e293b", dash=(2, 4))
+        self.ptz_canvas.create_line(z2_x, 0, z2_x, ch, fill="#1e293b", dash=(2, 4))
+
+        # 2. Outer Tracking Deadband Frame (Cyan)
         outer_crop_w = float(self.live_ptz_w)
         outer_crop_h = outer_crop_w * 9.0 / 16.0
         if outer_crop_w > w:
@@ -781,10 +844,10 @@ class ZentropyControlCenter(ctk.CTk):
         oy1 = max(4, (ch - outer_box_h) // 2)
         oy2 = oy1 + outer_box_h
 
-        self.ptz_canvas.create_rectangle(ox1, oy1, ox2, oy2, outline="#06b6d4", width=1, dash=(4, 4))
-        self.ptz_canvas.create_text(ox1 + 8, oy1 + 8, anchor="nw", text="TRACKING DEADBAND (16:9)", fill="#06b6d4", font=("Segoe UI", 9, "bold"))
+        self.ptz_canvas.create_rectangle(ox1, oy1, ox2, oy2, outline="#06b6d4", width=1, dash=(5, 5))
+        self.ptz_canvas.create_text(ox1 + 10, oy1 + 10, anchor="nw", text="TRACKING DEADBAND (16:9)", fill="#06b6d4", font=("Segoe UI", 9, "bold"))
 
-        # 2. Inner Broadcast Viewport (85% scale - Stabilized Output)
+        # 3. Inner Broadcast Viewport (85% scale - Stabilized Output)
         inner_scale = 0.85
         inner_box_w = int(outer_box_w * inner_scale)
         inner_box_h = int(outer_box_h * inner_scale)
@@ -794,10 +857,24 @@ class ZentropyControlCenter(ctk.CTk):
         iy1 = oy1 + (outer_box_h - inner_box_h) // 2
         iy2 = iy1 + inner_box_h
 
+        # Glowing double border
+        self.ptz_canvas.create_rectangle(ix1 - 1, iy1 - 1, ix2 + 1, iy2 + 1, outline="#059669", width=1)
         self.ptz_canvas.create_rectangle(ix1, iy1, ix2, iy2, outline="#10b981", width=3)
-        self.ptz_canvas.create_text((ix1 + ix2)//2, iy1 + 12, text="★ 16:9 STABILIZED BROADCAST", fill="#10b981", font=("Segoe UI", 10, "bold"))
+        self.ptz_canvas.create_text((ix1 + ix2)//2, iy1 + 14, text="★ 16:9 STABILIZED BROADCAST VIEWPORT", fill="#10b981", font=("Segoe UI", 11, "bold"))
 
-        # 3. Extract the inner stabilized broadcast crop
+        # 4. Ball Lock Pin Indicator on Panorama
+        if self.live_current_ball is not None:
+            bx_norm = self.live_current_ball.get("x", w / 2.0) / float(w)
+            by_norm = self.live_current_ball.get("y", h / 2.0) / float(h)
+            pin_x = int(bx_norm * cw)
+            pin_y = int(by_norm * ch)
+            
+            # Pulse radar rings
+            self.ptz_canvas.create_oval(pin_x - 14, pin_y - 14, pin_x + 14, pin_y + 14, outline="#f59e0b", width=1)
+            self.ptz_canvas.create_oval(pin_x - 7, pin_y - 7, pin_x + 7, pin_y + 7, fill="#f59e0b", outline="#ffffff")
+            self.ptz_canvas.create_text(pin_x, pin_y - 18, text="⚽ BALL", fill="#f59e0b", font=("Segoe UI", 8, "bold"))
+
+        # 5. Extract the inner stabilized broadcast crop
         inner_crop_w = outer_crop_w * inner_scale
         inner_crop_h = inner_crop_w * 9.0 / 16.0
 
@@ -811,11 +888,17 @@ class ZentropyControlCenter(ctk.CTk):
         
         # Scale to fit monitor stage
         raw_mon_w = self.lbl_live_16_9.winfo_width()
-        mon_w = raw_mon_w if raw_mon_w > 50 else 680
-        mon_h = max(240, int(mon_w * 9.0 / 16.0))
+        mon_w = raw_mon_w if raw_mon_w > 50 else 720
+        mon_h = max(260, int(mon_w * 9.0 / 16.0))
         
         if broadcast_crop is not None and broadcast_crop.size > 0:
             resized_broad = cv2.resize(broadcast_crop, (mon_w, mon_h))
+            
+            # Add Pro TV Broadcast HUD overlay on video
+            cv2.rectangle(resized_broad, (15, 15), (140, 45), (15, 23, 42), -1)
+            cv2.rectangle(resized_broad, (15, 15), (140, 45), (30, 41, 59), 1)
+            cv2.putText(resized_broad, "🔴 LIVE HD", (25, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (239, 68, 68), 2, cv2.LINE_AA)
+
             rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
             pil_broad = Image.fromarray(rgb_broad)
             ctk_broad = ctk.CTkImage(light_image=pil_broad, dark_image=pil_broad, size=(mon_w, mon_h))
@@ -828,11 +911,22 @@ class ZentropyControlCenter(ctk.CTk):
             text=f"PAN: {yaw_deg:+5.1f}° | FOV: 55° | DEADBAND: 18% | OUT: 1080p60"
         )
 
+        # Tactical zone estimation
+        if self.live_ptz_x < 0.35:
+            cur_zone = "Defensive Box (Left)"
+        elif self.live_ptz_x > 0.65:
+            cur_zone = "Attacking Goal (Right)"
+        else:
+            cur_zone = "Central Midfield"
+        
+        self.lbl_tac_zone.configure(text=f"Zone: {cur_zone}")
+        self.lbl_tac_players.configure(text=f"Players: {self.live_active_players} Active")
+
         if self.stream_server and self.stream_server.running:
             self.stream_server.update_frame(broadcast_crop)
 
     def on_ptz_drag(self, event):
-        cw = self.ptz_canvas.winfo_width() or 1000
+        cw = self.ptz_canvas.winfo_width() or 1050
         self.live_ptz_x = max(0.15, min(0.85, event.x / float(cw)))
         self.render_live_studio_views()
 
@@ -870,9 +964,10 @@ class ZentropyControlCenter(ctk.CTk):
         if ret:
             self.live_current_frame = frame
             if self.live_trajectory and target_frame in self.live_trajectory:
-                cx, cw = self.live_trajectory[target_frame]
-                self.live_ptz_x = cx / 3200.0
-                self.live_ptz_w = cw
+                entry = self.live_trajectory[target_frame]
+                self.live_ptz_x = entry["cx"] / 3200.0
+                self.live_ptz_w = entry["cw"]
+                self.live_current_ball = entry.get("ball", None)
             self.render_live_studio_views()
             cur_sec = int(target_frame / fps)
             mins = cur_sec // 60
@@ -884,7 +979,7 @@ class ZentropyControlCenter(ctk.CTk):
         if self.live_playing:
             self.live_playing = False
             self.btn_live_play.configure(text="▶ START BROADCAST", fg_color="#10b981", hover_color="#059669")
-            self.lbl_mon_live_pill.configure(text="● STANDBY", text_color="#94a3b8", fg_color="#151e33")
+            self.lbl_mon_live_pill.configure(text="● STANDBY", text_color="#94a3b8", fg_color="#131c31")
         else:
             pano_file = self.entry_live_pano.get().strip()
             if not os.path.exists(pano_file):
@@ -911,6 +1006,8 @@ class ZentropyControlCenter(ctk.CTk):
         curr_cw = self.live_ptz_w
         curr_vel_x = 0.0
 
+        last_ball_x = None
+
         while self.live_playing and cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -923,7 +1020,20 @@ class ZentropyControlCenter(ctk.CTk):
             # Ultra-Stable Cosine Deadband Tracking
             if self.switch_auto_ptz.get():
                 if self.live_trajectory and frame_idx in self.live_trajectory:
-                    target_cx, target_cw = self.live_trajectory[frame_idx]
+                    entry = self.live_trajectory[frame_idx]
+                    target_cx = entry["cx"]
+                    target_cw = entry["cw"]
+                    self.live_current_ball = entry.get("ball", None)
+                    self.live_active_players = entry.get("players", 12)
+
+                    # Calculate ball speed telemetry
+                    if self.live_current_ball and "x" in self.live_current_ball:
+                        bx = self.live_current_ball["x"]
+                        if last_ball_x is not None:
+                            disp = abs(bx - last_ball_x)
+                            speed_est = np.clip(disp * 1.8, 0, 95)
+                            self.lbl_tac_speed.configure(text=f"Ball Est: {speed_est:.0f} km/h")
+                        last_ball_x = bx
                     
                     deadband = (curr_cw * 0.18)
                     dist = target_cx - curr_cx
