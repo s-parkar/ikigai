@@ -36,15 +36,74 @@ DEFAULT_CONFIG = {
     "stitch_duration": "",
     "track_start": "00:00:00",
     "track_duration": "",
-    "live_pano_source": "stitched_panorama_full.mp4"
+    "live_pano_source": "stitched_panorama_full.mp4",
+    "live_coords_source": "ball_trajectory_events.jsonl"
 }
+
+def parse_trajectory_file(file_path, pano_w=3200, pano_h=1080):
+    trajectories = {}
+    if not file_path or not os.path.exists(file_path):
+        return trajectories
+
+    try:
+        if file_path.endswith('.jsonl'):
+            with open(file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line: continue
+                    try:
+                        ev = json.loads(line)
+                        f_idx = ev.get("frame_index", ev.get("frame", None))
+                        if f_idx is None: continue
+                        if ev.get("kind") == "pan_decision":
+                            pose = ev.get("pose", {})
+                            yaw = pose.get("yaw", 0.0)
+                            fov = pose.get("fov_degrees", 55.0)
+                            cx = (yaw / 90.0 + 0.5) * pano_w
+                            cw = (fov / 90.0) * pano_w
+                            trajectories[int(f_idx)] = (float(cx), float(cw))
+                        elif "ball" in ev and ev["ball"]:
+                            b = ev["ball"]
+                            bx = b.get("x", b.get("yaw", None))
+                            if bx is not None:
+                                cx = (bx / 90.0 + 0.5) * pano_w if abs(bx) <= 90 else float(bx)
+                                trajectories[int(f_idx)] = (cx, float(pano_h * 16.0 / 9.0))
+                        elif "cx" in ev:
+                            trajectories[int(f_idx)] = (float(ev["cx"]), float(ev.get("cw", pano_h * 16.0 / 9.0)))
+                    except Exception:
+                        continue
+        elif file_path.endswith('.json'):
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    for ev in data:
+                        f_idx = ev.get("frame_index", ev.get("frame", None))
+                        if f_idx is None: continue
+                        if ev.get("kind") == "pan_decision":
+                            pose = ev.get("pose", {})
+                            yaw = pose.get("yaw", 0.0)
+                            fov = pose.get("fov_degrees", 55.0)
+                            cx = (yaw / 90.0 + 0.5) * pano_w
+                            cw = (fov / 90.0) * pano_w
+                            trajectories[int(f_idx)] = (float(cx), float(cw))
+                        elif "ball" in ev and ev["ball"]:
+                            b = ev["ball"]
+                            bx = b.get("x", b.get("yaw", None))
+                            if bx is not None:
+                                cx = (bx / 90.0 + 0.5) * pano_w if abs(bx) <= 90 else float(bx)
+                                trajectories[int(f_idx)] = (cx, float(pano_h * 16.0 / 9.0))
+                        elif "cx" in ev:
+                            trajectories[int(f_idx)] = (float(ev["cx"]), float(ev.get("cw", pano_h * 16.0 / 9.0)))
+    except Exception as e:
+        print(f"Error parsing trajectory file {file_path}: {e}")
+    return trajectories
 
 class ZentropyControlCenter(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("Zentropy AI Broadcast Control Center - Pipeline Manager")
-        self.geometry("1260x920")
+        self.geometry("1260x940")
         self.minsize(1100, 800)
 
         self.config_data = self.load_config()
@@ -60,9 +119,10 @@ class ZentropyControlCenter(ctk.CTk):
         self.live_playing = False
         self.live_cap = None
         self.live_ptz_x = 0.5 # 0.0 to 1.0 (center)
-        self.live_ptz_zoom = 1.0
-        self.live_auto_track = False
+        self.live_ptz_w = 1920.0
+        self.live_auto_track = True
         self.live_current_frame = None
+        self.live_trajectory = {}
 
         self.create_layout()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -258,6 +318,7 @@ class ZentropyControlCenter(ctk.CTk):
         # Optional Coordinates JSONL
         ctk.CTkLabel(card_in, text="Import Coordinates (.jsonl):").grid(row=3, column=0, sticky="w", padx=15, pady=5)
         self.entry_coords = ctk.CTkEntry(card_in, width=450, placeholder_text="Optional: Select ball_trajectory_events.jsonl")
+        self.entry_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
         self.entry_coords.grid(row=3, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_in, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_coords)).grid(row=3, column=2, padx=15, pady=5)
 
@@ -358,25 +419,34 @@ class ZentropyControlCenter(ctk.CTk):
         container = ctk.CTkScrollableFrame(self.tab_ptz, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # Card 1: Source & Trajectory Import
         card_src = ctk.CTkFrame(container, corner_radius=8, fg_color="#1e293b")
         card_src.pack(fill="x", pady=5, padx=5)
 
-        lbl_sec = ctk.CTkLabel(card_src, text="LIVE BROADCAST PANORAMA SOURCE", font=ctk.CTkFont(size=14, weight="bold"), text_color="#38bdf8")
+        lbl_sec = ctk.CTkLabel(card_src, text="LIVE BROADCAST SOURCE & TRAJECTORY IMPORT", font=ctk.CTkFont(size=14, weight="bold"), text_color="#38bdf8")
         lbl_sec.grid(row=0, column=0, columnspan=3, sticky="w", padx=15, pady=(10, 5))
 
-        ctk.CTkLabel(card_src, text="Processed Panorama:").grid(row=1, column=0, sticky="w", padx=15, pady=5)
+        # Panorama source
+        ctk.CTkLabel(card_src, text="Panorama Video:").grid(row=1, column=0, sticky="w", padx=15, pady=5)
         self.entry_live_pano = ctk.CTkEntry(card_src, width=450)
         self.entry_live_pano.insert(0, self.config_data.get("live_pano_source", "stitched_panorama_full.mp4"))
         self.entry_live_pano.grid(row=1, column=1, sticky="ew", padx=10, pady=5)
         ctk.CTkButton(card_src, text="Browse...", width=90, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=1, column=2, padx=15, pady=5)
 
+        # Trajectory import for direct auto-pan & zoom replay
+        ctk.CTkLabel(card_src, text="Import Trajectory (.jsonl):").grid(row=2, column=0, sticky="w", padx=15, pady=5)
+        self.entry_live_coords = ctk.CTkEntry(card_src, width=450, placeholder_text="Optional: Select ball_trajectory_events.jsonl")
+        self.entry_live_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
+        self.entry_live_coords.grid(row=2, column=1, sticky="ew", padx=10, pady=5)
+        ctk.CTkButton(card_src, text="Load / Browse...", width=90, command=self.load_live_trajectory_file).grid(row=2, column=2, padx=15, pady=5)
+
         card_src.columnconfigure(1, weight=1)
 
-        # Dual-View Studio
+        # Card 2: Dual-View Studio
         card_views = ctk.CTkFrame(container, corner_radius=8, fg_color="#1e293b")
         card_views.pack(fill="both", expand=True, pady=10, padx=5)
 
-        lbl_pano_title = ctk.CTkLabel(card_views, text="1. FULL FIELD PANORAMA (DRAG GREEN BOX TO PAN)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#10b981")
+        lbl_pano_title = ctk.CTkLabel(card_views, text="1. FULL FIELD PANORAMA (GREEN 16:9 BOX AUTO-FOLLOWS BALL TRAJECTORY)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#10b981")
         lbl_pano_title.pack(anchor="w", padx=15, pady=(10, 2))
 
         self.ptz_canvas = tk.Canvas(card_views, height=180, bg="#0f172a", highlightthickness=1, highlightbackground="#334155")
@@ -384,7 +454,7 @@ class ZentropyControlCenter(ctk.CTk):
         self.ptz_canvas.bind("<B1-Motion>", self.on_ptz_drag)
         self.ptz_canvas.bind("<Button-1>", self.on_ptz_drag)
 
-        lbl_out_title = ctk.CTkLabel(card_views, text="2. LIVE 16:9 BROADCAST OUTPUT (DIRECT CROPPED VIEWPORT)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#38bdf8")
+        lbl_out_title = ctk.CTkLabel(card_views, text="2. LIVE 16:9 BROADCAST OUTPUT (DIRECT CROPPED & ZOOMED STREAM)", font=ctk.CTkFont(size=13, weight="bold"), text_color="#38bdf8")
         lbl_out_title.pack(anchor="w", padx=15, pady=(10, 2))
 
         self.lbl_live_16_9 = ctk.CTkLabel(card_views, text="Live Broadcast Viewport", height=240, fg_color="#090d16", corner_radius=6)
@@ -396,11 +466,11 @@ class ZentropyControlCenter(ctk.CTk):
 
         self.btn_live_play = ctk.CTkButton(
             ctrl_bar,
-            text="▶ START LIVE PREVIEW",
+            text="▶ START LIVE BROADCAST",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#10b981",
             hover_color="#059669",
-            width=170,
+            width=190,
             height=36,
             command=self.toggle_live_playback
         )
@@ -410,7 +480,8 @@ class ZentropyControlCenter(ctk.CTk):
         ctk.CTkButton(ctrl_bar, text="⚽ Center", width=95, height=36, command=lambda: self.set_ptz_pos(0.50)).pack(side="left", padx=3)
         ctk.CTkButton(ctrl_bar, text="Right Goal ▶", width=95, height=36, command=lambda: self.set_ptz_pos(0.85)).pack(side="left", padx=3)
 
-        self.switch_auto_ptz = ctk.CTkSwitch(ctrl_bar, text="Auto AI Track", font=ctk.CTkFont(size=12))
+        self.switch_auto_ptz = ctk.CTkSwitch(ctrl_bar, text="Trajectory Auto Pan/Zoom", font=ctk.CTkFont(size=12))
+        self.switch_auto_ptz.select()
         self.switch_auto_ptz.pack(side="right", padx=10)
 
         # Mobile LAN Stream Server
@@ -442,6 +513,21 @@ class ZentropyControlCenter(ctk.CTk):
         self.lbl_stream_url.pack(side="left")
 
         self.load_initial_live_frame()
+        self.load_live_trajectory_file(silent=True)
+
+    def load_live_trajectory_file(self, silent=False):
+        if not silent:
+            f = filedialog.askopenfilename(filetypes=[("JSONL / JSON Trajectory Files", "*.jsonl *.json"), ("All Files", "*.*")])
+            if f:
+                self.entry_live_coords.delete(0, "end")
+                self.entry_live_coords.insert(0, f)
+        
+        path = self.entry_live_coords.get().strip()
+        if os.path.exists(path):
+            self.live_trajectory = parse_trajectory_file(path)
+            self.log_message(f"Loaded {len(self.live_trajectory)} frame coordinates from {path}")
+        else:
+            self.live_trajectory = {}
 
     def load_initial_live_frame(self):
         pano_file = self.entry_live_pano.get().strip()
@@ -475,28 +561,28 @@ class ZentropyControlCenter(ctk.CTk):
         self.ptz_canvas.delete("all")
         self.ptz_canvas.create_image(0, 0, anchor="nw", image=self.ptz_photo)
 
-        box_w = int(cw * 0.45)
-        box_h = int(ch * 0.90)
+        crop_w = float(self.live_ptz_w)
+        crop_h = crop_w * 9.0 / 16.0
+        if crop_w > w:
+            crop_w = float(w)
+            crop_h = crop_w * 9.0 / 16.0
+
+        box_w = int(cw * (crop_w / float(w)))
+        box_h = int(ch * (crop_h / float(h)))
         center_x = int(self.live_ptz_x * cw)
         x1 = max(5, min(cw - box_w - 5, center_x - box_w // 2))
         x2 = x1 + box_w
-        y1 = (ch - box_h) // 2
+        y1 = max(5, (ch - box_h) // 2)
         y2 = y1 + box_h
 
         self.ptz_canvas.create_rectangle(x1, y1, x2, y2, outline="#10b981", width=3)
         self.ptz_canvas.create_text((x1 + x2)//2, y1 + 14, text="16:9 BROADCAST VIEWPORT", fill="#10b981", font=("Segoe UI", 10, "bold"))
 
-        crop_h = h
-        crop_w = int(crop_h * 16.0 / 9.0)
-        if crop_w > w:
-            crop_w = w
-            crop_h = int(crop_w * 9.0 / 16.0)
-
         actual_cx = int(self.live_ptz_x * w)
-        cx1 = max(0, min(w - crop_w, actual_cx - crop_w // 2))
-        cx2 = cx1 + crop_w
-        cy1 = max(0, (h - crop_h) // 2)
-        cy2 = cy1 + crop_h
+        cx1 = int(max(0, min(w - crop_w, actual_cx - crop_w // 2)))
+        cx2 = int(cx1 + crop_w)
+        cy1 = int(max(0, (h - crop_h) // 2))
+        cy2 = int(cy1 + crop_h)
 
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
@@ -523,33 +609,54 @@ class ZentropyControlCenter(ctk.CTk):
     def toggle_live_playback(self):
         if self.live_playing:
             self.live_playing = False
-            self.btn_live_play.configure(text="▶ START LIVE PREVIEW", fg_color="#10b981", hover_color="#059669")
+            self.btn_live_play.configure(text="▶ START LIVE BROADCAST", fg_color="#10b981", hover_color="#059669")
         else:
             pano_file = self.entry_live_pano.get().strip()
             if not os.path.exists(pano_file):
                 messagebox.showerror("File Error", f"Panoramic video not found:\n{pano_file}")
                 return
+            self.load_live_trajectory_file(silent=True)
             self.live_playing = True
-            self.btn_live_play.configure(text="⏸ PAUSE LIVE PREVIEW", fg_color="#f59e0b", hover_color="#d97706")
+            self.btn_live_play.configure(text="⏸ PAUSE LIVE BROADCAST", fg_color="#f59e0b", hover_color="#d97706")
             t = threading.Thread(target=self.live_playback_loop, args=(pano_file,), daemon=True)
             t.start()
 
     def live_playback_loop(self, video_path):
         cap = cv2.VideoCapture(video_path)
+        frame_idx = 0
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 3200
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+
+        curr_cx = self.live_ptz_x * w
+        curr_cw = self.live_ptz_w
+
         while self.live_playing and cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                frame_idx = 0
                 continue
             
             self.live_current_frame = frame
             
+            # Replay imported trajectory if enabled
             if self.switch_auto_ptz.get():
-                t = time.time() * 0.5
-                self.live_ptz_x = 0.5 + 0.25 * np.sin(t)
+                if self.live_trajectory and frame_idx in self.live_trajectory:
+                    target_cx, target_cw = self.live_trajectory[frame_idx]
+                    # Smooth inertia
+                    curr_cx = curr_cx * 0.90 + target_cx * 0.10
+                    curr_cw = curr_cw * 0.95 + target_cw * 0.05
+                    self.live_ptz_x = np.clip(curr_cx / float(w), 0.15, 0.85)
+                    self.live_ptz_w = np.clip(curr_cw, 1400, w)
+                else:
+                    # Fallback auto sway
+                    t = time.time() * 0.5
+                    self.live_ptz_x = 0.5 + 0.25 * np.sin(t)
+                    self.live_ptz_w = float(h * 16.0 / 9.0)
 
             self.render_live_studio_views()
-            time.sleep(0.033)
+            frame_idx += 1
+            time.sleep(0.033) # 30 fps
         cap.release()
 
     def toggle_stream_server(self):
@@ -764,6 +871,9 @@ class ZentropyControlCenter(ctk.CTk):
                 self.set_status("COMPLETED", "#10b981")
                 self.entry_coords.delete(0, "end")
                 self.entry_coords.insert(0, out_jsonl)
+                self.entry_live_coords.delete(0, "end")
+                self.entry_live_coords.insert(0, out_jsonl)
+                self.load_live_trajectory_file(silent=True)
             except Exception as e:
                 self.log_message(f"Error exporting coordinates: {e}")
                 self.set_status("ERROR", "#ef4444")
@@ -833,7 +943,8 @@ class ZentropyControlCenter(ctk.CTk):
             "smoothing": self.slider_smooth.get(),
             "stitch_start": self.entry_stitch_start.get(),
             "stitch_duration": self.entry_stitch_dur.get(),
-            "live_pano_source": self.entry_live_pano.get()
+            "live_pano_source": self.entry_live_pano.get(),
+            "live_coords_source": self.entry_live_coords.get()
         }
         self.save_config()
         self.live_playing = False
