@@ -256,63 +256,127 @@ class ZentropyControlCenter(ctk.CTk):
     # ─── TAB 3: LIVE BROADCAST STUDIO (MASTER CONTROL ROOM) ───────────
     def build_ptz_tab(self):
         container = ctk.CTkFrame(self.tab_ptz, fg_color="transparent")
-        container.pack(fill="both", expand=True, padx=4, pady=4)
+        container.pack(fill="both", expand=True, padx=4, pady=2)
 
-        # TOP ROW: Full Field Panorama ($3200 \times 1080$) Canvas (PRO-SCALE 240px HEIGHT)
+        # 1. TOP ROW: Full Field Panorama ($3200 \times 1080$) Canvas (Height 180px - Guaranteed Zero Overflow)
         pano_card = ctk.CTkFrame(container, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
-        pano_card.pack(fill="x", padx=4, pady=(0, 6))
+        pano_card.pack(fill="x", padx=4, pady=(0, 4))
 
-        top_header = ctk.CTkFrame(pano_card, height=28, fg_color="transparent")
-        top_header.pack(fill="x", padx=12, pady=(6, 2))
+        top_header = ctk.CTkFrame(pano_card, height=24, fg_color="transparent")
+        top_header.pack(fill="x", padx=10, pady=(4, 1))
 
         ctk.CTkLabel(
             top_header, 
-            text="1. FULL FIELD PANORAMA (3200×1080) — INTERACTIVE VIRTUAL PTZ CANVAS", 
-            font=ctk.CTkFont(size=12, weight="bold"), 
+            text="1. FULL FIELD PANORAMA (3200×1080) — DRAG CANVAS TO MANUALLY PAN", 
+            font=ctk.CTkFont(size=11, weight="bold"), 
             text_color="#38bdf8"
         ).pack(side="left")
 
-        # Legend Pills
         legend_box = ctk.CTkFrame(top_header, fg_color="transparent")
         legend_box.pack(side="right")
 
-        ctk.CTkLabel(legend_box, text="🟦 Tracking Deadband", font=ctk.CTkFont(size=11), text_color="#38bdf8").pack(side="left", padx=8)
-        ctk.CTkLabel(legend_box, text="🟩 16:9 Broadcast Program", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10b981").pack(side="left", padx=8)
-        ctk.CTkLabel(legend_box, text="⚽ Ball Lock", font=ctk.CTkFont(size=11, weight="bold"), text_color="#f59e0b").pack(side="left", padx=8)
+        ctk.CTkLabel(legend_box, text="🟦 Deadband", font=ctk.CTkFont(size=10), text_color="#38bdf8").pack(side="left", padx=6)
+        ctk.CTkLabel(legend_box, text="🟩 16:9 Broadcast", font=ctk.CTkFont(size=10, weight="bold"), text_color="#10b981").pack(side="left", padx=6)
+        ctk.CTkLabel(legend_box, text="⚽ Ball Lock", font=ctk.CTkFont(size=10, weight="bold"), text_color="#f59e0b").pack(side="left", padx=6)
 
-        # Large, Crisp 240px Canvas
-        self.ptz_canvas = tk.Canvas(pano_card, height=240, bg="#05070e", highlightthickness=0)
-        self.ptz_canvas.pack(fill="x", padx=10, pady=(2, 8))
+        self.ptz_canvas = tk.Canvas(pano_card, height=170, bg="#05070e", highlightthickness=0)
+        self.ptz_canvas.pack(fill="x", padx=8, pady=(1, 6))
         self.ptz_canvas.bind("<B1-Motion>", self.on_ptz_drag)
         self.ptz_canvas.bind("<Button-1>", self.on_ptz_drag)
 
-        # BOTTOM SPLIT: 62% Main Broadcast Monitor | 38% Pro Tactical & Control Deck
+        # 2. MIDDLE ROW: PERSISTENT MASTER CONTROL & HOTSPOT SWITCHER BAR (ALWAYS ON SCREEN)
+        ctrl_bar = ctk.CTkFrame(container, height=44, corner_radius=8, fg_color="#0d1424", border_width=1, border_color="#1e293b")
+        ctrl_bar.pack(fill="x", padx=4, pady=(0, 4))
+
+        cb_inner = ctk.CTkFrame(ctrl_bar, fg_color="transparent")
+        cb_inner.pack(fill="x", padx=10, pady=4)
+
+        # Main Play Button
+        self.btn_live_play = ctk.CTkButton(
+            cb_inner,
+            text="▶ START BROADCAST",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="#10b981",
+            hover_color="#059669",
+            height=32,
+            width=170,
+            command=self.toggle_live_playback
+        )
+        self.btn_live_play.pack(side="left", padx=(0, 8))
+
+        # Hotspot Presets
+        ctk.CTkButton(cb_inner, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.15)).pack(side="left", padx=2)
+        ctk.CTkButton(cb_inner, text="⚽ Midfield", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.50)).pack(side="left", padx=2)
+        ctk.CTkButton(cb_inner, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, width=90, command=lambda: self.set_ptz_pos(0.85)).pack(side="left", padx=2)
+
+        # Seeking Box
+        ctk.CTkLabel(cb_inner, text="Seek:", font=ctk.CTkFont(size=11), text_color="#94a3b8").pack(side="left", padx=(10, 4))
+        self.entry_live_start = ctk.CTkEntry(cb_inner, width=70, height=28, font=ctk.CTkFont(family="Consolas", size=11))
+        self.entry_live_start.insert(0, "00:00:00")
+        self.entry_live_start.pack(side="left", padx=(0, 4))
+
+        self.btn_seek_live = ctk.CTkButton(
+            cb_inner, 
+            text="⏩ Jump", 
+            width=60, 
+            height=28, 
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#3b82f6",
+            hover_color="#2563eb",
+            command=self.seek_live_start_time
+        )
+        self.btn_seek_live.pack(side="left", padx=(0, 8))
+
+        # Trajectory Toggle
+        self.switch_auto_ptz = ctk.CTkSwitch(
+            cb_inner, 
+            text="Auto-AI Trajectory", 
+            font=ctk.CTkFont(size=11, weight="bold"),
+            progress_color="#10b981"
+        )
+        self.switch_auto_ptz.select()
+        self.switch_auto_ptz.pack(side="left", padx=(8, 0))
+
+        # Mobile Stream Button
+        self.btn_toggle_stream = ctk.CTkButton(
+            cb_inner,
+            text="📡 Mobile Stream (OFF)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#131c31",
+            hover_color="#10b981",
+            height=30,
+            width=160,
+            command=self.toggle_stream_server
+        )
+        self.btn_toggle_stream.pack(side="right")
+
+        # 3. BOTTOM SPLIT: 65% Program Monitor | 35% Tactical & Source Desk
         bottom_split = ctk.CTkFrame(container, fg_color="transparent")
         bottom_split.pack(fill="both", expand=True, padx=0, pady=0)
 
         # LEFT COLUMN (Main Broadcast Monitor Stage)
         left_monitor_card = ctk.CTkFrame(bottom_split, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
-        left_monitor_card.pack(side="left", fill="both", expand=True, padx=(4, 6), pady=0)
+        left_monitor_card.pack(side="left", fill="both", expand=True, padx=(4, 4), pady=0)
 
-        mon_bar = ctk.CTkFrame(left_monitor_card, height=28, fg_color="transparent")
-        mon_bar.pack(fill="x", padx=12, pady=(6, 2))
+        mon_bar = ctk.CTkFrame(left_monitor_card, height=24, fg_color="transparent")
+        mon_bar.pack(fill="x", padx=10, pady=(4, 1))
 
         ctk.CTkLabel(
             mon_bar, 
             text="2. LIVE PROGRAM BROADCAST (16:9 1080p ULTRA-STABILIZED)", 
-            font=ctk.CTkFont(size=12, weight="bold"), 
+            font=ctk.CTkFont(size=11, weight="bold"), 
             text_color="#10b981"
         ).pack(side="left")
 
         self.lbl_mon_live_pill = ctk.CTkLabel(
             mon_bar,
             text="● ON AIR",
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=10, weight="bold"),
             text_color="#ef4444",
             fg_color="#24141e",
             corner_radius=8,
-            padx=10,
-            pady=2
+            padx=8,
+            pady=1
         )
         self.lbl_mon_live_pill.pack(side="right")
 
@@ -323,175 +387,106 @@ class ZentropyControlCenter(ctk.CTk):
             fg_color="#05070e", 
             corner_radius=6
         )
-        self.lbl_live_16_9.pack(fill="both", expand=True, padx=10, pady=(2, 6))
+        self.lbl_live_16_9.pack(fill="both", expand=True, padx=8, pady=(1, 4))
 
         # Monitor Bottom Status Row
-        mon_footer = ctk.CTkFrame(left_monitor_card, fg_color="transparent")
-        mon_footer.pack(fill="x", padx=10, pady=(2, 6))
+        mon_footer = ctk.CTkFrame(left_monitor_card, height=22, fg_color="transparent")
+        mon_footer.pack(fill="x", padx=8, pady=(1, 4))
 
         self.lbl_live_time_display = ctk.CTkLabel(
             mon_footer, 
-            text="Position: 00:00:00 (Frame 0/13088)", 
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"), 
+            text="Position: 00:00:00 (Frame 0/13088) | ⚡ 60.0 FPS", 
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"), 
             text_color="#94a3b8"
         )
         self.lbl_live_time_display.pack(side="left")
 
         self.lbl_live_telemetry_hud = ctk.CTkLabel(
             mon_footer,
-            text="PAN: 0.0° | ZOOM: 1.0x | DEADBAND: 18% | OUT: 1080p60",
-            font=ctk.CTkFont(family="Consolas", size=11),
+            text="PAN: 0.0° | ZOOM: 1.0x | OUT: 1080p60",
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color="#38bdf8"
         )
         self.lbl_live_telemetry_hud.pack(side="right")
 
-        # RIGHT COLUMN: Tactical Telemetry & Control Deck
-        right_ctrl_card = ctk.CTkFrame(bottom_split, width=470, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
+        # RIGHT COLUMN: Tactical Telemetry & Sources Deck
+        right_ctrl_card = ctk.CTkFrame(bottom_split, width=380, corner_radius=8, fg_color="#111827", border_width=1, border_color="#1f293d")
         right_ctrl_card.pack(side="right", fill="both", padx=(0, 4), pady=0)
         right_ctrl_card.pack_propagate(False)
 
-        # Section 1: Primary Broadcast Actions & Seeking
-        sec1 = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
-        sec1.pack(fill="x", padx=12, pady=(8, 4))
-
-        btn_row = ctk.CTkFrame(sec1, fg_color="transparent")
-        btn_row.pack(fill="x", pady=(2, 2))
-
-        self.btn_live_play = ctk.CTkButton(
-            btn_row,
-            text="▶ START BROADCAST",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#10b981",
-            hover_color="#059669",
-            height=36,
-            command=self.toggle_live_playback
-        )
-        self.btn_live_play.pack(side="left", fill="x", expand=True, padx=(0, 6))
-
-        self.switch_auto_ptz = ctk.CTkSwitch(
-            btn_row, 
-            text="Auto Trajectory", 
-            font=ctk.CTkFont(size=12, weight="bold"),
-            progress_color="#10b981"
-        )
-        self.switch_auto_ptz.select()
-        self.switch_auto_ptz.pack(side="right")
-
-        # Start / Seek Bar
-        time_inner = ctk.CTkFrame(sec1, fg_color="#0a0f1d", corner_radius=6)
-        time_inner.pack(fill="x", pady=(6, 2))
-
-        time_box = ctk.CTkFrame(time_inner, fg_color="transparent")
-        time_box.pack(fill="x", padx=8, pady=4)
-
-        ctk.CTkLabel(time_box, text="Seek (HH:MM:SS):", font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 6))
-        self.entry_live_start = ctk.CTkEntry(time_box, width=75, height=26, font=ctk.CTkFont(family="Consolas", size=11))
-        self.entry_live_start.insert(0, "00:00:00")
-        self.entry_live_start.pack(side="left", padx=(0, 6))
-
-        self.btn_seek_live = ctk.CTkButton(
-            time_box, 
-            text="⏩ Jump", 
-            width=65, 
-            height=26, 
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color="#3b82f6",
-            hover_color="#2563eb",
-            command=self.seek_live_start_time
-        )
-        self.btn_seek_live.pack(side="left")
-
-        # Section 2: Pro Tactical Analytics Panel (AI Metrics)
+        # Tactical Analytics Panel
         sec_tactical = ctk.CTkFrame(right_ctrl_card, fg_color="#0a0f1d", corner_radius=6, border_width=1, border_color="#1a253e")
-        sec_tactical.pack(fill="x", padx=12, pady=4)
+        sec_tactical.pack(fill="x", padx=8, pady=6)
 
         tac_head = ctk.CTkFrame(sec_tactical, fg_color="transparent")
         tac_head.pack(fill="x", padx=8, pady=(4, 2))
-        ctk.CTkLabel(tac_head, text="⚡ PRO AI TACTICAL TELEMETRY", font=ctk.CTkFont(size=10, weight="bold"), text_color="#f59e0b").pack(side="left")
-        ctk.CTkLabel(tac_head, text="REAL-TIME", font=ctk.CTkFont(size=9, weight="bold"), text_color="#10b981").pack(side="right")
+        ctk.CTkLabel(tac_head, text="⚡ PRO AI TACTICAL METRICS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#f59e0b").pack(side="left")
+        ctk.CTkLabel(tac_head, text="LIVE", font=ctk.CTkFont(size=9, weight="bold"), text_color="#10b981").pack(side="right")
 
         tac_grid = ctk.CTkFrame(sec_tactical, fg_color="transparent")
         tac_grid.pack(fill="x", padx=8, pady=(0, 6))
 
-        self.lbl_tac_zone = ctk.CTkLabel(tac_grid, text="Zone: Midfield", font=ctk.CTkFont(size=11), text_color="#e2e8f0")
+        self.lbl_tac_zone = ctk.CTkLabel(tac_grid, text="Zone: Midfield", font=ctk.CTkFont(size=10), text_color="#e2e8f0")
         self.lbl_tac_zone.grid(row=0, column=0, sticky="w", pady=1)
 
-        self.lbl_tac_speed = ctk.CTkLabel(tac_grid, text="Ball Est: 28 km/h", font=ctk.CTkFont(size=11), text_color="#38bdf8")
-        self.lbl_tac_speed.grid(row=0, column=1, sticky="w", padx=10, pady=1)
+        self.lbl_tac_speed = ctk.CTkLabel(tac_grid, text="Ball: 28 km/h", font=ctk.CTkFont(size=10), text_color="#38bdf8")
+        self.lbl_tac_speed.grid(row=0, column=1, sticky="w", padx=6, pady=1)
 
-        self.lbl_tac_players = ctk.CTkLabel(tac_grid, text="Players: 12 Detected", font=ctk.CTkFont(size=11), text_color="#e2e8f0")
+        self.lbl_tac_players = ctk.CTkLabel(tac_grid, text="Players: 12 Active", font=ctk.CTkFont(size=10), text_color="#e2e8f0")
         self.lbl_tac_players.grid(row=1, column=0, sticky="w", pady=1)
 
-        self.lbl_tac_stability = ctk.CTkLabel(tac_grid, text="Stability: 99.4%", font=ctk.CTkFont(size=11), text_color="#10b981")
-        self.lbl_tac_stability.grid(row=1, column=1, sticky="w", padx=10, pady=1)
+        self.lbl_tac_stability = ctk.CTkLabel(tac_grid, text="Stability: 99.4%", font=ctk.CTkFont(size=10), text_color="#10b981")
+        self.lbl_tac_stability.grid(row=1, column=1, sticky="w", padx=6, pady=1)
 
-        # Section 3: Hotspot Switcher Grid (Broadcast Switcher Desk)
-        sec2 = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
-        sec2.pack(fill="x", padx=12, pady=4)
+        # Secondary Hotspots Grid
+        sec_hot = ctk.CTkFrame(right_ctrl_card, fg_color="transparent")
+        sec_hot.pack(fill="x", padx=8, pady=4)
+        ctk.CTkLabel(sec_hot, text="TACTICAL ANGLE PRESETS", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(anchor="w")
 
-        ctk.CTkLabel(sec2, text="CAMERA HOTSPOT PRESETS (INSTANT PAN)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b").pack(anchor="w")
-
-        grid_frame = ctk.CTkFrame(sec2, fg_color="transparent")
+        grid_frame = ctk.CTkFrame(sec_hot, fg_color="transparent")
         grid_frame.pack(fill="x", pady=2)
-
-        ctk.CTkButton(grid_frame, text="◀ Left Goal", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.15)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="⚽ Midfield", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.50)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Right Goal ▶", font=ctk.CTkFont(size=11, weight="bold"), fg_color="#18233c", hover_color="#273960", height=30, command=lambda: self.set_ptz_pos(0.85)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
-
-        ctk.CTkButton(grid_frame, text="Left Box", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.28)).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Mid Action", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.50)).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-        ctk.CTkButton(grid_frame, text="Right Box", font=ctk.CTkFont(size=10), fg_color="#131c31", hover_color="#1e2c4c", height=26, command=lambda: self.set_ptz_pos(0.72)).grid(row=1, column=2, sticky="ew", padx=2, pady=2)
-
+        ctk.CTkButton(grid_frame, text="Left Box", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.28)).grid(row=0, column=0, sticky="ew", padx=2, pady=1)
+        ctk.CTkButton(grid_frame, text="Mid Center", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.50)).grid(row=0, column=1, sticky="ew", padx=2, pady=1)
+        ctk.CTkButton(grid_frame, text="Right Box", font=ctk.CTkFont(size=10), fg_color="#18233c", hover_color="#273960", height=26, command=lambda: self.set_ptz_pos(0.72)).grid(row=0, column=2, sticky="ew", padx=2, pady=1)
         grid_frame.columnconfigure((0, 1, 2), weight=1)
 
-        # Section 4: Source Video & Trajectory File Pickers
+        # Source Pickers
         sec3 = ctk.CTkFrame(right_ctrl_card, fg_color="#0a0f1d", corner_radius=6)
-        sec3.pack(fill="x", padx=12, pady=4)
+        sec3.pack(fill="x", padx=8, pady=4)
 
         s3_inner = ctk.CTkFrame(sec3, fg_color="transparent")
-        s3_inner.pack(fill="x", padx=8, pady=4)
+        s3_inner.pack(fill="x", padx=6, pady=4)
 
-        ctk.CTkLabel(s3_inner, text="Pano Video:", font=ctk.CTkFont(size=10)).grid(row=0, column=0, sticky="w", pady=1)
-        self.entry_live_pano = ctk.CTkEntry(s3_inner, height=24, font=ctk.CTkFont(size=10))
+        ctk.CTkLabel(s3_inner, text="Pano:", font=ctk.CTkFont(size=10)).grid(row=0, column=0, sticky="w", pady=1)
+        self.entry_live_pano = ctk.CTkEntry(s3_inner, height=22, font=ctk.CTkFont(size=10))
         self.entry_live_pano.insert(0, self.config_data.get("live_pano_source", "stitched_panorama_full.mp4"))
-        self.entry_live_pano.grid(row=0, column=1, sticky="ew", padx=4, pady=1)
-        ctk.CTkButton(s3_inner, text="...", width=24, height=24, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=0, column=2, pady=1)
+        self.entry_live_pano.grid(row=0, column=1, sticky="ew", padx=3, pady=1)
+        ctk.CTkButton(s3_inner, text="...", width=20, height=22, command=lambda: self.browse_file(self.entry_live_pano)).grid(row=0, column=2, pady=1)
 
-        ctk.CTkLabel(s3_inner, text="Trajectory:", font=ctk.CTkFont(size=10)).grid(row=1, column=0, sticky="w", pady=1)
-        self.entry_live_coords = ctk.CTkEntry(s3_inner, height=24, font=ctk.CTkFont(size=10))
+        ctk.CTkLabel(s3_inner, text="Coords:", font=ctk.CTkFont(size=10)).grid(row=1, column=0, sticky="w", pady=1)
+        self.entry_live_coords = ctk.CTkEntry(s3_inner, height=22, font=ctk.CTkFont(size=10))
         self.entry_live_coords.insert(0, self.config_data.get("live_coords_source", "ball_trajectory_events.jsonl"))
-        self.entry_live_coords.grid(row=1, column=1, sticky="ew", padx=4, pady=1)
-        ctk.CTkButton(s3_inner, text="...", width=24, height=24, command=self.load_live_trajectory_file).grid(row=1, column=2, pady=1)
-
+        self.entry_live_coords.grid(row=1, column=1, sticky="ew", padx=3, pady=1)
+        ctk.CTkButton(s3_inner, text="...", width=20, height=22, command=self.load_live_trajectory_file).grid(row=1, column=2, pady=1)
         s3_inner.columnconfigure(1, weight=1)
 
-        # Section 5: Local Wi-Fi Mobile Streaming Server
+        # Mobile Stream URL Pill
         sec4 = ctk.CTkFrame(right_ctrl_card, fg_color="#0d1e1a", corner_radius=6, border_width=1, border_color="#10b981")
-        sec4.pack(fill="x", padx=12, pady=(4, 8))
+        sec4.pack(fill="x", padx=8, pady=(4, 6))
 
         s4_inner = ctk.CTkFrame(sec4, fg_color="transparent")
-        s4_inner.pack(fill="x", padx=8, pady=6)
-
-        ctk.CTkLabel(s4_inner, text="📡 LOCAL WI-FI STREAM SERVER", font=ctk.CTkFont(size=10, weight="bold"), text_color="#10b981").pack(anchor="w")
+        s4_inner.pack(fill="x", padx=6, pady=4)
 
         self.lbl_stream_url = ctk.CTkLabel(
             s4_inner,
-            text="Endpoint: http://<LAN-IP>:8080 (OFF)",
-            font=ctk.CTkFont(family="Consolas", size=10),
+            text="LAN Stream: http://<IP>:8080 (OFF)",
+            font=ctk.CTkFont(family="Consolas", size=9),
             text_color="#94a3b8"
         )
-        self.lbl_stream_url.pack(anchor="w", pady=1)
+        self.lbl_stream_url.pack(anchor="w")
 
-        self.btn_toggle_stream = ctk.CTkButton(
-            s4_inner,
-            text="▶ START MOBILE STREAM SERVER",
-            font=ctk.CTkFont(size=10, weight="bold"),
-            fg_color="#10b981",
-            hover_color="#059669",
-            height=26,
-            command=self.toggle_stream_server
-        )
-        self.btn_toggle_stream.pack(fill="x", pady=(2, 0))
+        self.load_initial_live_frame()
+        self.load_live_trajectory_file(silent=True)
 
         self.load_initial_live_frame()
         self.load_live_trajectory_file(silent=True)
@@ -886,18 +881,25 @@ class ZentropyControlCenter(ctk.CTk):
 
         broadcast_crop = frame[cy1:cy2, cx1:cx2]
         
-        # Scale to fit monitor stage
+        # Scale to fit monitor stage cleanly without expanding parent window
         raw_mon_w = self.lbl_live_16_9.winfo_width()
-        mon_w = raw_mon_w if raw_mon_w > 50 else 720
-        mon_h = max(260, int(mon_w * 9.0 / 16.0))
+        raw_mon_h = self.lbl_live_16_9.winfo_height()
+        
+        target_h = max(220, min(360, raw_mon_h if raw_mon_h > 50 else 300))
+        target_w = max(390, int(target_h * 16.0 / 9.0))
+        if raw_mon_w > 50 and target_w > raw_mon_w:
+            target_w = raw_mon_w
+            target_h = int(target_w * 9.0 / 16.0)
+            
+        mon_w, mon_h = target_w, target_h
         
         if broadcast_crop is not None and broadcast_crop.size > 0:
             resized_broad = cv2.resize(broadcast_crop, (mon_w, mon_h))
             
             # Add Pro TV Broadcast HUD overlay on video
-            cv2.rectangle(resized_broad, (15, 15), (140, 45), (15, 23, 42), -1)
-            cv2.rectangle(resized_broad, (15, 15), (140, 45), (30, 41, 59), 1)
-            cv2.putText(resized_broad, "🔴 LIVE HD", (25, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (239, 68, 68), 2, cv2.LINE_AA)
+            cv2.rectangle(resized_broad, (15, 15), (135, 42), (15, 23, 42), -1)
+            cv2.rectangle(resized_broad, (15, 15), (135, 42), (30, 41, 59), 1)
+            cv2.putText(resized_broad, "🔴 LIVE HD", (23, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (239, 68, 68), 2, cv2.LINE_AA)
 
             rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
             pil_broad = Image.fromarray(rgb_broad)
