@@ -167,7 +167,8 @@ class ZentropyControlCenter(ctk.CTk):
             padx=12,
             pady=4
         )
-        self.status_badge.pack(side="right", padx=20, pady=15)
+        # Bottom Collapsible Log Console (Built first so logging is available during tab init)
+        self.build_log_console()
 
         # Tabview
         self.tabview = ctk.CTkTabview(self, corner_radius=10)
@@ -180,9 +181,6 @@ class ZentropyControlCenter(ctk.CTk):
         self.build_stitch_tab()
         self.build_track_tab()
         self.build_ptz_tab()
-
-        # Bottom Collapsible Log Console
-        self.build_log_console()
 
     # ─── TAB 1: PANO STITCHER ──────────────────────────────────────────
     def build_stitch_tab(self):
@@ -285,10 +283,9 @@ class ZentropyControlCenter(ctk.CTk):
             w, h = img.size
             tw = 680
             th = int(tw * h / w)
-            resized = img.resize((tw, th), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(resized)
-            self.lbl_pano_img.configure(image=photo, text="")
-            self.lbl_pano_img.image = photo
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(tw, th))
+            self.lbl_pano_img.configure(image=ctk_img, text="")
+            self.lbl_pano_img.image = ctk_img
 
     # ─── TAB 2: AI TRACKING & AUTO-BROADCAST ───────────────────────────
     def build_track_tab(self):
@@ -590,9 +587,10 @@ class ZentropyControlCenter(ctk.CTk):
         disp_h = int(disp_w * 9.0 / 16.0)
         resized_broad = cv2.resize(broadcast_crop, (disp_w, disp_h))
         rgb_broad = cv2.cvtColor(resized_broad, cv2.COLOR_BGR2RGB)
-        photo_broad = ImageTk.PhotoImage(Image.fromarray(rgb_broad))
-        self.lbl_live_16_9.configure(image=photo_broad, text="")
-        self.lbl_live_16_9.image = photo_broad
+        pil_broad = Image.fromarray(rgb_broad)
+        ctk_broad = ctk.CTkImage(light_image=pil_broad, dark_image=pil_broad, size=(disp_w, disp_h))
+        self.lbl_live_16_9.configure(image=ctk_broad, text="")
+        self.lbl_live_16_9.image = ctk_broad
 
         if self.stream_server and self.stream_server.running:
             self.stream_server.update_frame(broadcast_crop)
@@ -691,8 +689,14 @@ class ZentropyControlCenter(ctk.CTk):
         self.log_message("Zentropy AI Broadcast Control Center Initialized.")
 
     def log_message(self, text):
-        self.log_text.insert("end", f"[{time.strftime('%H:%M:%S')}] {text}\n")
-        self.log_text.see("end")
+        formatted = f"[{time.strftime('%H:%M:%S')}] {text}\n"
+        if hasattr(self, 'log_text') and self.log_text:
+            try:
+                self.log_text.insert("end", formatted)
+                self.log_text.see("end")
+            except Exception:
+                pass
+        print(formatted, end="")
 
     def clear_logs(self):
         self.log_text.delete("1.0", "end")
@@ -925,9 +929,10 @@ class ZentropyControlCenter(ctk.CTk):
             target_w = 480
             target_h = int(target_w * h / w)
             resized = cv2.resize(rgb, (target_w, target_h))
-            img_tk = ImageTk.PhotoImage(Image.fromarray(resized))
-            self.lbl_track_img.configure(image=img_tk, text="")
-            self.lbl_track_img.image = img_tk
+            pil_prev = Image.fromarray(resized)
+            ctk_prev = ctk.CTkImage(light_image=pil_prev, dark_image=pil_prev, size=(target_w, target_h))
+            self.lbl_track_img.configure(image=ctk_prev, text="")
+            self.lbl_track_img.image = ctk_prev
 
             time.sleep(0.033)
         cap.release()
