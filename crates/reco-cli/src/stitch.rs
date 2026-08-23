@@ -24,6 +24,7 @@ pub struct StitchArgs<'a> {
     pub width: u32,
     pub height: u32,
     pub blend: f32,
+    pub fov: Option<f32>,
     pub start_time: Option<f64>,
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
@@ -139,6 +140,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(n) = args.max_frames {
         job = job.max_frames(n);
+    }
+    if let Some(fov) = args.fov {
+        job = job.fov_degrees(fov);
     }
     if args.sync_offset != 0 {
         job = job.sync_offset(args.sync_offset);

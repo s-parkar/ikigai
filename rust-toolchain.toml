@@ -8,6 +8,6 @@
 #   - `.github/workflows/rust.yml` (msrv job)
 #   - `rust-version.workspace = "X.Y"` in root Cargo.toml (once we
 #     consolidate the three rogue per-crate pins - M8 polish)
-channel = "1.92.0"
+channel = "stable"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

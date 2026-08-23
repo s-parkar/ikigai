@@ -3832,7 +3832,6 @@ dependencies = [
 [[package]]
 name = "mp4parse"
 version = "0.17.0"
-source = "git+https://github.com/AdrianEddy/mp4parse-rust.git#ff910c618cb7edba5a475571ba2baf37a1681844"
 dependencies = [
  "bitreader",
  "byteorder",

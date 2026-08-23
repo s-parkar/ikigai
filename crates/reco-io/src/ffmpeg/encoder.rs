@@ -1702,7 +1702,6 @@ fn build_encoder_opts(
             opts.set("cq", cq);
             opts.set("b:v", &mbps(bv));
             opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "high");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
         }
@@ -1719,7 +1718,6 @@ fn build_encoder_opts(
             opts.set("cq", cq);
             opts.set("b:v", &mbps(bv));
             opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "main");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
         }
@@ -1815,7 +1813,6 @@ fn build_encoder_opts(
             };
             opts.set("preset", preset);
             opts.set("crf", crf_val);
-            opts.set("profile", "main");
         }
         "libsvtav1" => {
             let (preset, crf_val) = match effective_preset {
@@ -1844,7 +1841,6 @@ fn build_encoder_opts(
             };
             opts.set("preset", preset);
             opts.set("crf", crf_val);
-            opts.set("profile", "high");
             // On Tegra (Jetson), limit threads to avoid starving other
             // pipeline stages (capture + pairing threads need CPU too).
             // x264 defaults to num_cpus which over-subscribes.

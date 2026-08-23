@@ -3,6 +3,13 @@ target/
 
 # Video artifacts
 *.mp4
+*.MOV
+*.mov
+*.mkv
+*.avi
+*.npz
+*.jpg
+*.png
 reco-trace.json
 
 # Python

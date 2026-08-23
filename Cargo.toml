@@ -37,5 +37,5 @@ tracing-log = "0.2"
 strip = true
 lto = "thin"
 
-# SPIKE: wgpu 28 interop with Slint. Fork removed; if wgpu 28 doesn't
-# have the shaderDrawParameters regression, no patch is needed.
+[patch."https://github.com/AdrianEddy/mp4parse-rust.git"]
+mp4parse = { path = "crates/mp4parse" }

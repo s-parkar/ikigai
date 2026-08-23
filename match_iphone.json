@@ -1,0 +1,45 @@
+{
+  "left_uniforms": {
+    "width": 1920,
+    "height": 1080,
+    "fx": 1450.0,
+    "fy": 1450.0,
+    "cx": 960.0,
+    "cy": 540.0,
+    "d": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "right_uniforms": {
+    "width": 1920,
+    "height": 1080,
+    "fx": 1450.0,
+    "fy": 1450.0,
+    "cx": 960.0,
+    "cy": 540.0,
+    "d": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "params": {
+    "cameraAxisOffset": 0.18928490759505653,
+    "intersect": 0.5262342727613523,
+    "xTy": 0.0028559411690305724,
+    "xRz": -0.19539502886519194,
+    "zRx": 0.22393339573223098,
+    "xRx": 0.0,
+    "zRz": 0.0
+  },
+  "rig_tilt": 0.0,
+  "rig_roll": 0.0,
+  "sync_offset": 0,
+  "field_roi": null,
+  "lens_correction_amount": 1.0,
+  "blend_width": 0.05
+}

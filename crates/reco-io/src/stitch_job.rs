@@ -54,6 +54,7 @@ pub struct StitchJob {
     max_frames: Option<u64>,
     sync_offset: Option<i64>,
     blend_width: f32,
+    fov_degrees: Option<f32>,
 
     // Callbacks
     on_progress: Option<ProgressCallback>,
@@ -256,6 +257,7 @@ impl StitchJob {
             max_frames: None,
             sync_offset: None,
             blend_width: 0.15,
+            fov_degrees: None,
             on_progress: None,
             on_finalizing: None,
             session_hooks: Vec::new(),
@@ -265,6 +267,12 @@ impl StitchJob {
             lookahead_secs: 0.0,
             events_path: None,
         }
+    }
+
+    /// Set vertical field of view in degrees.
+    pub fn fov_degrees(mut self, fov: f32) -> Self {
+        self.fov_degrees = Some(fov);
+        self
     }
 
     /// Create a job with in-memory calibration (no JSON file needed).
@@ -595,6 +603,7 @@ impl StitchJob {
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
+            fov_degrees: self.fov_degrees.unwrap_or(60.0),
             blend_width: self.blend_width,
             rig_tilt: cal.rig_tilt as f32,
             rig_roll: cal.rig_roll as f32,

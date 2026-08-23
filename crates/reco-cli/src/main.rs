@@ -174,6 +174,10 @@ enum Commands {
         #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
         blend: f32,
 
+        /// Vertical field of view in degrees (e.g. 50.0 to 75.0).
+        #[arg(long)]
+        fov: Option<f32>,
+
         /// Frame offset for temporal sync between cameras.
         /// Positive: skip N right frames (right started first).
         /// Negative: skip N left frames (left started first).
@@ -760,6 +764,7 @@ fn main() -> anyhow::Result<()> {
             codec,
             quality,
             blend,
+            fov,
             sync_offset,
             model,
             detection_interval,
@@ -785,6 +790,7 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
                 blend,
+                fov,
                 start_time,
                 end_time,
                 max_frames,
